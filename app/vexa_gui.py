@@ -26,27 +26,37 @@ async def main(page: ft.Page):
     print("🚀 Vexa App Starting...")
     
     # --- UI SETUP ---
-    page.title = "Vexa 3D Architect"
+    page.title = "Vexa"
     page.theme_mode = "dark"
+    page.padding = 0
     page.window_width = 500
     page.window_height = 800
-    
+    page.bgcolor = "#111111" # Very dark background
+
     # 1. Create Layout Containers
     chat_list = ft.ListView(
         expand=True, 
-        spacing=10, 
+        spacing=15, 
         auto_scroll=True,
         padding=20
     )
     
-    status_text = ft.Text("Connecting to Blender...", color="yellow")
+    # Status indicator (Small square)
+    status_indicator = ft.Container(width=10, height=10, bgcolor="yellow", tooltip="Connecting...")
+    status_text = ft.Text("Connecting...", size=12, color="grey")
 
-    # 2. Define Input Box (needed by send_message)
+    # 2. Define Input Box
     input_box = ft.TextField(
-        hint_text="Describe what to build (e.g. 'Create a red cube')...",
+        hint_text="Command Vexa...",
+        hint_style=ft.TextStyle(color="grey"),
         expand=True,
-        border_radius=20,
-        shift_enter=True
+        border_radius=0, # Sharp corners
+        border_color="#333333",
+        bgcolor="#1a1a1a",
+        filled=True,
+        content_padding=15,
+        shift_enter=True,
+        text_style=ft.TextStyle(font_family="Roboto Mono") # Tech font look
     )
 
     # 3. State Variables
@@ -55,27 +65,36 @@ async def main(page: ft.Page):
     if GEMINI_API_KEY:
         gemini_client = genai.Client(api_key=GEMINI_API_KEY)
     
-    # We use a mutable list to store the session so the inner function can access it
     state = {"session": None, "tools": []}
 
     # --- UI UPDATER ---
     def add_message(text, sender="user"):
         if sender == "user":
             align = "end"
-            bg_color = "blue900"
+            bg_color = "#152e4d" # Dark Technical Blue
+            txt_color = "white"
+            prefix = " YOU "
         else:
             align = "start"
-            bg_color = "green900"
+            bg_color = "#262626" # Matte Dark Grey
+            txt_color = "#e0e0e0"
+            prefix = " VEXA "
         
         chat_list.controls.append(
             ft.Row(
                 [
                     ft.Container(
-                        content=ft.Text(text, selectable=True),
+                        content=ft.Column([
+                            # Tiny label above message
+                            ft.Text(prefix, size=10, weight="bold", color="grey"),
+                            ft.Text(text, selectable=True, color=txt_color, font_family="Roboto Mono", size=14)
+                        ], spacing=2),
                         padding=15,
-                        border_radius=20,
+                        border_radius=0, # Sharp rectangles
                         bgcolor=bg_color,
-                        width=300
+                        width=320,
+                        # FIX: Using proper BorderSide syntax
+                        border=ft.border.all(1, "#333333") 
                     )
                 ],
                 alignment=align
@@ -90,7 +109,6 @@ async def main(page: ft.Page):
         if not user_text:
             return
         
-        # Clear UI immediately
         input_box.value = ""
         input_box.disabled = True
         add_message(user_text, "user")
@@ -103,11 +121,9 @@ async def main(page: ft.Page):
                  page.update()
                  return
 
-            # Add to history
             chat_history.append(types.Content(role="user", parts=[types.Part.from_text(text=user_text)]))
 
             print("🤖 Asking Gemini...")
-            # 1. Ask Gemini
             response = gemini_client.models.generate_content(
                 model="gemini-2.0-flash",
                 contents=chat_history,
@@ -117,7 +133,6 @@ async def main(page: ft.Page):
             model_content = response.candidates[0].content
             chat_history.append(model_content)
 
-            # 2. Check for Function Call
             function_call = None
             if model_content.parts:
                 for part in model_content.parts:
@@ -130,15 +145,13 @@ async def main(page: ft.Page):
                 tool_args = function_call.args
                 print(f"🛠️ Gemini requested tool: {tool_name}")
                 
-                add_message(f"🛠️ Executing: {tool_name}...", "vexa")
+                add_message(f"Running process: {tool_name}...", "vexa")
                 
-                # 3. Execute in Blender
                 if state["session"]:
                     result = await state["session"].call_tool(tool_name, arguments=tool_args)
                     tool_output = result.content[0].text
                     print(f"✅ Blender Output: {tool_output}")
                     
-                    # 4. Send result back to Gemini
                     function_response_part = types.Part.from_function_response(
                         name=tool_name,
                         response={"result": tool_output}
@@ -155,43 +168,56 @@ async def main(page: ft.Page):
                     add_message("❌ Error: Blender is not connected.", "vexa")
 
             else:
-                # Normal Text Response
                 add_message(response.text, "vexa")
 
         except Exception as ex:
             print(f"❌ Error in send_message: {ex}")
             add_message(f"Error: {str(ex)}", "vexa")
         
-        # Re-enable input
         input_box.disabled = False
         input_box.focus()
         page.update()
 
-    # 4. Attach Event Handler (Directly!)
+    # 4. Attach Event Handler
     input_box.on_submit = send_message
     
-    send_btn = ft.IconButton(
-        icon="send_rounded",
-        icon_color="blue400",
-        tooltip="Send",
-        on_click=send_message  # <--- Direct reference, no lambda
+    # Square Send Button with String Icon
+    send_btn = ft.Container(
+        content=ft.Icon(name="arrow_forward", color="white"), # Using string name
+        bgcolor="#152e4d", 
+        padding=10,
+        on_click=send_message,
+        width=50,
+        height=50,
+        alignment=ft.alignment.center,
+        border_radius=0 # Sharp square
     )
 
     # 5. Build Page Layout
-    page.add(
-        ft.Container(
-            content=ft.Row(
-                [ft.Text("Vexa 3D", size=20, weight="bold"), status_text], 
-                alignment="spaceBetween"
-            ),
-            padding=10,
-            bgcolor="surfaceVariant"
+    header = ft.Container(
+        content=ft.Row(
+            [
+                ft.Text("VEXA", size=20, weight="bold", font_family="Roboto Mono"), 
+                ft.Row([status_indicator, status_text], spacing=5)
+            ], 
+            alignment="spaceBetween"
         ),
-        chat_list,
-        ft.Container(
-            content=ft.Row([input_box, send_btn]),
-            padding=10
-        )
+        padding=ft.padding.symmetric(horizontal=20, vertical=15),
+        bgcolor="#1a1a1a",
+        # FIX: Using border.only with BorderSide
+        border=ft.border.only(bottom=ft.BorderSide(1, "#333333"))
+    )
+
+    input_area = ft.Container(
+        content=ft.Row([input_box, send_btn], spacing=0),
+        padding=20,
+        bgcolor="#111111"
+    )
+
+    page.add(
+        header,
+        ft.Container(content=chat_list, expand=True),
+        input_area
     )
 
     # --- SERVER CONNECTION LOOP ---
@@ -205,30 +231,32 @@ async def main(page: ft.Page):
     try:
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                state["session"] = session # Save to state so send_message can use it
+                state["session"] = session
                 await session.initialize()
                 
-                # Load tools
                 tools_result = await session.list_tools()
                 mcp_tools = tools_result.tools
                 state["tools"] = [types.Tool(function_declarations=[mcp_tool_to_gemini(t) for t in mcp_tools])]
                 
                 print(f"✅ Connected! Loaded {len(mcp_tools)} tools.")
                 
-                # Update UI
-                status_text.value = "🟢 Connected"
-                status_text.color = "green"
-                add_message("Hello! I am Vexa. Blender is connected.", "vexa")
+                # Update Status UI
+                status_indicator.bgcolor = "#00FF00" # Neon Green hex
+                status_indicator.tooltip = "Connected"
+                status_text.value = "ONLINE"
+                status_text.color = "#00FF00"
+                
+                add_message("System Initialized. Blender Connected.", "vexa")
                 page.update()
 
-                # Keep app alive
                 while True:
                     await asyncio.sleep(0.1)
     except Exception as e:
         print(f"🔴 Connection Failed: {e}")
-        status_text.value = "🔴 Connection Failed"
+        status_indicator.bgcolor = "red"
+        status_text.value = "OFFLINE"
         status_text.color = "red"
-        add_message(f"Could not connect to Blender MCP. Check terminal for details.", "vexa")
+        add_message(f"Connection Error. Check terminal.", "vexa")
         page.update()
 
 if __name__ == "__main__":
