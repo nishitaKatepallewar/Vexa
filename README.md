@@ -5,3 +5,11 @@ Goal:
 Some features to be integrated:
 
 - Automatically make (atleast basic) corrections and optimizations upon user consent.
+
+Steps to run VEXA:
+- Open Blender, check on required APIs, and connect MCP server.
+- ```git clone git@github.com:nishitaKatepallewar/Vexa.git```
+- ```cd Vexa```
+- ```source myevn/bin/activate```
+- ```cd app/dist/```
+- ```./Vexa```
