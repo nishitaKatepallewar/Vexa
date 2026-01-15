@@ -6,7 +6,7 @@ QC checks in seconds.
 
 ![System Architecture](assets/architecture_v0.1.png)
 
-1. Type a prompt in Blender's N-Panel
+1. Select object(s) and type a prompt in Blender's N-Panel
 2. Prompt + available functions sent to LLM as JSON schema
 3. LLM returns structured function call
 4. Vexa executes the function in Blender
@@ -20,6 +20,7 @@ AI interpretation remains separate from Blender operations.
 - Zero external dependencies, runs natively in Blender
 
 **What doesn't:**
+- Hardcoded for Gemini API (switching LLMs requires rewrite) 
 - Contextual inference ("rename to camel case" should convert existing name, but asks user for the new name instead)
 - No loading indicator during processing
 - Only 2 functions implemented: `rename_object` and `count_vertices`
