@@ -6,7 +6,7 @@ import bpy
 class VexaMainPanel(bpy.types.Panel):
     """Creates a Panel in the View3D UI list."""
 
-    bl_label = "Vexa AI"
+    bl_label = "Vexa"
     bl_idname = "VEXA_PT_main_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"

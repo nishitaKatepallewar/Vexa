@@ -12,7 +12,7 @@ bl_info = {
     "version": (0, 3, 0),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Vexa",
-    "description": "QC checks within seconds.",
+    "description": "QC checks in seconds.",
     "category": "3D View",
 }
 
