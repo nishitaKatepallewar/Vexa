@@ -49,3 +49,30 @@ def rename_object(new_name: str) -> str:
     old_name = obj.name
     obj.name = new_name
     return f"Renamed '{old_name}' to '{new_name}'."
+
+
+@AgentTools.register
+def select_hard_edges() -> str:
+    """Selects all hard (sharp) edges in the active object.
+
+    Returns:
+        A status message with the count of hard edges.
+    """
+    # pylint: disable=no-member
+    obj = bpy.context.active_object
+    if not obj or obj.type != "MESH":
+        return "No active mesh object selected."
+
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    hard_edges_count = 0
+    for edge in obj.data.edges:
+        if edge.use_edge_sharp:
+            edge.select = True
+            hard_edges_count += 1
+        else:
+            edge.select = False
+
+    bpy.ops.object.mode_set(mode="EDIT")
+    
+    return f"{hard_edges_count} edges detected."
