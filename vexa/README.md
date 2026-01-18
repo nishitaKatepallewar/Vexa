@@ -2,7 +2,7 @@
 
 QC checks in seconds.
 
-**Architecture**
+## Architecture
 
 ![System Architecture](assets/architecture_v0.1.png)
 
@@ -14,26 +14,32 @@ QC checks in seconds.
 
 AI interpretation remains separate from Blender operations.
 
-**What works:**
+## What works:
 
 - Maps natural language to function calls ("how many verts" → `count_vertices()`) 
 - Fuzzy matching handles minor output variations
 - Zero external dependencies, runs natively in Blender
 
-**What doesn't:**
+## What doesn't:
 
 - Hardcoded for Gemini API (switching LLMs requires rewrite) 
 - Contextual inference ("rename to camel case" should convert existing name, but asks user for the new name instead)
 - No loading indicator during processing
-- Only 2 functions implemented: `rename_object` and `count_vertices`
+- Large JSON schema may cause issues. Should be replaced with TOON.
 
-**Setup**
+## Implemented checks:
+
+- `count_vertices`
+- `rename_object`
+- `select_hard_edges`
+
+## Setup
 
 1. Edit > Preferences > Add-ons > Install > Select `vexa.zip`
 2. Check the box next to "Vexa"
 3. Expand the add-on, paste [Gemini API Key](https://aistudio.google.com/app/apikey)
 
-**Usage**
+## Usage
 
 1. Open 3D Viewport Sidebar (Press `N`)
 2. Find the Vexa tab
