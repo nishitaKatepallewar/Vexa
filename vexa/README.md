@@ -1,71 +1,47 @@
-# Vexa (v0.1)
+# Vexa
 
-QC checks in seconds.
+Technical documentation for developers.
 
 ## Architecture
 
-![System Architecture](assets/architecture_v0.1.png)
+Vexa has two execution paths:
 
+### Inference Path
 1. Select object(s) and type a prompt in Blender's N-Panel
 2. Prompt + available functions sent to LLM as JSON schema
 3. LLM returns structured function call
 4. Vexa executes the function in Blender
 5. Result displayed in panel
 
-AI interpretation remains separate from Blender operations.
+![System Architecture](assets/architecture_v0.1.png) 
 
-## What works:
+### Direct Path
+1. User clicks action button
+2. Vexa executes the function in Blender
+3. Result displayed in panel
 
-- Maps natural language to function calls ("how many verts" → `count_vertices()`) 
-- Fuzzy matching handles minor output variations
-- Zero external dependencies, runs natively in Blender
+Both paths use the same underlying tools from the registry.
 
-## What doesn't:
+## Implemented Checks
 
-- Hardcoded for Gemini API (switching LLMs requires rewrite) 
-- Contextual inference ("rename to camel case" should convert existing name, but asks user for the new name instead)
-- No loading indicator during processing
-- Large JSON schema may cause issues. Should be replaced with TOON.
+- **Detect N-gons** - Find and select faces with 5+ vertices
+- **Triangulate N-gons** - Convert n-gons to triangles
+- **count_vertices** - Count total vertices
+- **rename_object(new_name)** - Rename active object
+- **select_hard_edges** - Select sharp edges
+- **select_faces_with_intersecting_meshes** - Find intersecting faces
 
-## Implemented checks:
+## Adding New Tools
 
-- `count_vertices`
-- `rename_object`
-- `select_hard_edges`
-- `select_faces_with_intersecting_meshes`
+```python
+from vexa.core.registry import AgentTools
 
-## Setup
-
-### Development (for active development)
-1. Remove any existing `vexa` folder if present:
-   ```bash
-   rm -rf ~/.config/blender/<version>/scripts/addons/vexa
-   ```
-2. Create a symlink from Blender's addons folder to this directory:
-   ```bash
-   ln -s /path/to/Vexa/vexa ~/.config/blender/<version>/scripts/addons/vexa
-   ```
-   - Replace `<version>` with your Blender major.minor (e.g., `4.5` for 4.5.4 LTS)
-   - Find the exact path: Blender > Edit > Preferences > File Paths > Scripting
-3. In Blender: Edit > Preferences > Add-ons > Search "Vexa" > Check the box to enable
-4. Re-enter your Gemini API Key (preferences don't persist with symlink)
-5. Changes to the code reload automatically in Blender
-
-**Troubleshooting**: If "Vexa" doesn't appear after creating symlink, restart Blender.
-
-### Production
-1. Build the zip (run from project root):
-   ```bash
-   ./build.sh
-   ```
-2. Edit > Preferences > Add-ons > Install > Select `vexa.zip`
-3. Check the box next to "Vexa"
-4. Expand the add-on, paste [Gemini API Key](https://aistudio.google.com/app/apikey)
-
-## Usage
-
-1. Open 3D Viewport Sidebar (Press `N`)
-2. Find the Vexa tab
-3. Select an object
-4. Type an instruction
-5. Click the Play button
+@AgentTools.register(
+    display_name="My Check",
+    is_quick_action=True,
+    category="Geometry",
+)
+def my_tool() -> str:
+    """Description shown to LLM."""
+    return "Result message"
+```

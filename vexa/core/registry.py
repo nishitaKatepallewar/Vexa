@@ -2,38 +2,113 @@
 
 import inspect
 import typing
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
+
+
+@dataclass
+class ToolMetadata:
+    """Metadata for a registered tool."""
+
+    display_name: str = ""
+    is_quick_action: bool = False
+    category: str = "General"
+    description: str = ""
+
+
+@dataclass
+class RegisteredTool:
+    """A registered tool with its function, schema, and metadata."""
+
+    name: str
+    func: Callable
+    schema: Dict[str, Any]
+    metadata: ToolMetadata = field(default_factory=ToolMetadata)
 
 
 class AgentTools:
     """Registry for AI-exposed functions."""
 
-    _registry: Dict[str, Callable] = {}
+    _tools: Dict[str, RegisteredTool] = {}
     _schemas: List[Dict[str, Any]] = []
 
     @classmethod
-    def register(cls, func: Callable) -> Callable:
+    def register(
+        cls,
+        display_name: str = "",
+        is_quick_action: bool = False,
+        category: str = "General",
+    ) -> Callable:
         """Decorator to register a function as an AI tool.
 
         Args:
-            func: The function to register.
+            display_name: Human-readable name for UI display.
+            is_quick_action: Whether to show as a button in the UI.
+            category: Category for grouping in UI.
 
         Returns:
-            The original function, unmodified.
+            A decorator function.
         """
-        cls._registry[func.__name__] = func
-        cls._schemas.append(cls._generate_schema(func))
-        return func
+
+        def decorator(func: Callable) -> Callable:
+            name = func.__name__
+            doc = inspect.getdoc(func) or "No description provided."
+            sig = inspect.signature(func)
+
+            metadata = ToolMetadata(
+                display_name=display_name or name.replace("_", " ").title(),
+                is_quick_action=is_quick_action,
+                category=category,
+                description=doc,
+            )
+
+            schema = cls._generate_schema(func)
+            tool = RegisteredTool(
+                name=name,
+                func=func,
+                schema=schema,
+                metadata=metadata,
+            )
+
+            cls._tools[name] = tool
+            cls._schemas.append(schema)
+
+            return func
+
+        return decorator
 
     @classmethod
     def get_tool(cls, name: str) -> Optional[Callable]:
         """Retrieves a registered function by name."""
-        return cls._registry.get(name)
+        tool = cls._tools.get(name)
+        return tool.func if tool else None
+
+    @classmethod
+    def get_tool_metadata(cls, name: str) -> Optional[ToolMetadata]:
+        """Retrieves metadata for a registered tool."""
+        tool = cls._tools.get(name)
+        return tool.metadata if tool else None
 
     @classmethod
     def get_schemas(cls) -> List[Dict[str, Any]]:
         """Returns the list of generated tool schemas."""
         return cls._schemas
+
+    @classmethod
+    def get_categories(cls) -> List[str]:
+        """Returns all unique categories from registered tools."""
+        return sorted(set(t.metadata.category for t in cls._tools.values()))
+
+    @classmethod
+    def get_tools_by_category(cls) -> Dict[str, List[RegisteredTool]]:
+        """Returns tools grouped by category."""
+        result: Dict[str, List[RegisteredTool]] = {}
+        for tool in cls._tools.values():
+            cat = tool.metadata.category
+            if cat not in result:
+                result[cat] = []
+            result[cat].append(tool)
+        return result
 
     @staticmethod
     def _generate_schema(func: Callable) -> Dict[str, Any]:
@@ -65,16 +140,12 @@ class AgentTools:
             elif param.annotation == bool:
                 param_type = "BOOLEAN"
 
-            # Check for List types
             is_list = (
-                param.annotation == list
-                or typing.get_origin(param.annotation) == list
+                param.annotation == list or typing.get_origin(param.annotation) == list
             )
 
             if is_list:
                 param_type = "ARRAY"
-                # Gemini requires 'items' for ARRAY type.
-                # For MVP, we assume lists are lists of strings.
                 prop_def = {
                     "type": param_type,
                     "items": {"type": "STRING"},

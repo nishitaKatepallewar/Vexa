@@ -1,15 +1,16 @@
 """Main entry point for Vexa Blender Add-on."""
 
-# pylint: disable=import-error, no-name-in-module
 import bpy
 
-from .ui.panel import VexaMainPanel
+from .ui.panel import VexaMainPanel, VexaToggleCategory
 from .operators.execute_prompt import VexaExecutePromptOperator
+from .operators.quick_actions import VexaQuickAction
+from .core.registry import AgentTools
 
 bl_info = {
     "name": "Vexa",
     "author": "Vexa Team",
-    "version": (0, 3, 0),
+    "version": (0, 4, 0),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Vexa",
     "description": "QC checks in seconds.",
@@ -35,17 +36,25 @@ class VexaPreferences(bpy.types.AddonPreferences):
     )
 
     def draw(self, context: bpy.types.Context) -> None:
-        """Draws the preferences UI."""
         layout = self.layout
         layout.prop(self, "api_key")
         layout.prop(self, "model_name")
 
 
-def register() -> None:
+def _import_tools() -> None:
+    """Import all tool modules to register them with AgentTools."""
+    from .tools import general_tools
+
+
+def _register() -> None:
     """Registers the add-on classes and properties."""
+    _import_tools()
+
     bpy.utils.register_class(VexaPreferences)
     bpy.utils.register_class(VexaMainPanel)
     bpy.utils.register_class(VexaExecutePromptOperator)
+    bpy.utils.register_class(VexaToggleCategory)
+    bpy.utils.register_class(VexaQuickAction)
 
     bpy.types.Scene.vexa_prompt = bpy.props.StringProperty(
         name="Prompt", description="Instruction for Vexa", default=""
@@ -55,14 +64,35 @@ def register() -> None:
     )
 
 
-def unregister() -> None:
+def _unregister() -> None:
     """Unregisters the add-on classes and properties."""
     bpy.utils.unregister_class(VexaPreferences)
     bpy.utils.unregister_class(VexaMainPanel)
     bpy.utils.unregister_class(VexaExecutePromptOperator)
+    bpy.utils.unregister_class(VexaToggleCategory)
+    bpy.utils.unregister_class(VexaQuickAction)
 
-    del bpy.types.Scene.vexa_prompt
-    del bpy.types.Scene.vexa_last_response
+    if "vexa_prompt" in bpy.types.Scene.__annotations__:
+        del bpy.types.Scene.__annotations__["vexa_prompt"]
+    if "vexa_last_response" in bpy.types.Scene.__annotations__:
+        del bpy.types.Scene.__annotations__["vexa_last_response"]
+
+    from .ui.panel import _reset_tool_cache
+
+    _reset_tool_cache()
+
+    AgentTools._tools.clear()
+    AgentTools._schemas.clear()
+
+
+def register() -> None:
+    """Public register function."""
+    _register()
+
+
+def unregister() -> None:
+    """Public unregister function."""
+    _unregister()
 
 
 if __name__ == "__main__":

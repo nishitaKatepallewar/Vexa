@@ -1,24 +1,40 @@
-"""Gemini REST Client for Vexa."""
+"""Abstract LLM client and implementations."""
 
 import http.client
 import json
+import logging
 import ssl
-from typing import Any, Dict, List, Optional, Tuple, Union
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Tuple
 
-DEFAULT_MODEL = "gemini-2.5-flash"
-TIMEOUT_SECONDS = 10
+logger = logging.getLogger(__name__)
 
 
-class GeminiClient:
-    """Handles communication with the Google Gemini REST API."""
+class LLMClient(ABC):
+    """Abstract base class for LLM clients."""
+
+    @abstractmethod
+    def generate_content(
+        self, prompt: str, tools_schema: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Sends a prompt and tool definitions to the LLM."""
+        pass
+
+    @abstractmethod
+    def parse_function_call(
+        self, response_json: Dict[str, Any]
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+        """Extracts function name and args from LLM response."""
+        pass
+
+
+class GeminiClient(LLMClient):
+    """Google Gemini REST API client."""
+
+    DEFAULT_MODEL = "gemini-2.5-flash"
+    TIMEOUT_SECONDS = 10
 
     def __init__(self, api_key: str, model_name: str = DEFAULT_MODEL):
-        """Initializes the client.
-
-        Args:
-            api_key: The Google Gemini API key.
-            model_name: The model identifier (e.g., 'gemini-1.5-flash').
-        """
         self.api_key = api_key
         self.host = "generativelanguage.googleapis.com"
         self.model = model_name
@@ -26,15 +42,6 @@ class GeminiClient:
     def generate_content(
         self, prompt: str, tools_schema: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """Sends a prompt and tool definitions to Gemini.
-
-        Args:
-            prompt: The user instruction.
-            tools_schema: A list of function declarations for Gemini tools.
-
-        Returns:
-            The raw parsed JSON response from the API.
-        """
         path = f"/v1beta/models/{self.model}:generateContent?key={self.api_key}"
 
         payload = {
@@ -48,7 +55,7 @@ class GeminiClient:
 
         try:
             conn = http.client.HTTPSConnection(
-                self.host, context=context, timeout=TIMEOUT_SECONDS
+                self.host, context=context, timeout=self.TIMEOUT_SECONDS
             )
             conn.request("POST", path, json.dumps(payload), headers)
             response = conn.getresponse()
@@ -56,28 +63,17 @@ class GeminiClient:
             conn.close()
 
             if response.status != 200:
-                print(f"Error from Gemini: {response.status} - {data}")
-                return {
-                    "error": f"HTTP {response.status}: {data.decode('utf-8')}"
-                }
+                return {"error": f"HTTP {response.status}: {data.decode('utf-8')}"}
 
             return json.loads(data)
 
-        except Exception as error:  # pylint: disable=broad-except
-            return {"error": str(error)}
+        except Exception as e:
+            logger.error(f"Gemini API error: {e}")
+            return {"error": str(e)}
 
     def parse_function_call(
         self, response_json: Dict[str, Any]
     ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
-        """Extracts function name and args from Gemini response.
-
-        Args:
-            response_json: The JSON response from generate_content.
-
-        Returns:
-            A tuple of (function_name, arguments_dict). Both are None if
-            no function call is found.
-        """
         try:
             candidates = response_json.get("candidates", [])
             if not candidates:
@@ -93,6 +89,13 @@ class GeminiClient:
 
             return None, None
 
-        except Exception as error:  # pylint: disable=broad-except
-            print(f"Error parsing response: {error}")
+        except Exception as e:
+            logger.error(f"Error parsing Gemini response: {e}")
             return None, None
+
+
+def create_llm_client(provider: str, api_key: str, model_name: str = "") -> LLMClient:
+    """Factory function to create LLM clients."""
+    if provider.lower() == "gemini":
+        return GeminiClient(api_key, model_name or GeminiClient.DEFAULT_MODEL)
+    raise ValueError(f"Unknown LLM provider: {provider}")
