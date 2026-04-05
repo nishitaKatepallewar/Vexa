@@ -36,9 +36,25 @@ AI interpretation remains separate from Blender operations.
 
 ## Setup
 
-1. Edit > Preferences > Add-ons > Install > Select `vexa.zip`
-2. Check the box next to "Vexa"
-3. Expand the add-on, paste [Gemini API Key](https://aistudio.google.com/app/apikey)
+### Development (recommended for active development)
+1. Create a symlink from Blender's addons folder to this directory:
+   ```bash
+   # On Linux/macOS
+   ln -s /path/to/Vexa/vexa ~/.config/blender/<version>/scripts/addons/vexa
+   ```
+   - Replace `<version>` with your Blender version (e.g., `4.3`)
+   - Find the exact path: Blender > Edit > Preferences > File Paths > Scripting
+2. Check the box next to "Vexa" in Add-ons
+3. Changes to the code reload automatically in Blender
+
+### Production
+1. Build the zip:
+   ```bash
+   ./build.sh
+   ```
+2. Edit > Preferences > Add-ons > Install > Select `vexa.zip`
+3. Check the box next to "Vexa"
+4. Expand the add-on, paste [Gemini API Key](https://aistudio.google.com/app/apikey)
 
 ## Usage
 
