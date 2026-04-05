@@ -32,6 +32,7 @@ AI interpretation remains separate from Blender operations.
 - `count_vertices`
 - `rename_object`
 - `select_hard_edges`
+- `select_faces_with_intersecting_meshes`
 
 ## Setup
 
