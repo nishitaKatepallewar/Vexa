@@ -1,6 +1,7 @@
 """General purpose AI tools for Blender."""
 
 import bpy
+import math
 import numpy as np
 from itertools import combinations
 from mathutils.bvhtree import BVHTree
@@ -47,10 +48,10 @@ def _reset_selection(obj):
         collection.foreach_set("select", np.zeros(len(collection), dtype=bool))
 
 
-def _switch_to_edit():
-    """Switches to edit mode with face selection."""
+def _switch_to_edit(select_type="FACE"):
+    """Switches to edit mode with specified selection type."""
     bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_mode(type="FACE")
+    bpy.ops.mesh.select_mode(type=select_type)
 
 
 def _switch_to_object():
@@ -86,7 +87,11 @@ def rename_object(new_name: str) -> str:
     return f"Renamed '{old_name}' to '{new_name}'."
 
 
-@AgentTools.register()
+@AgentTools.register(
+    display_name="Select Hard Edges",
+    is_quick_action=True,
+    category="Geometry",
+)
 def select_hard_edges() -> str:
     """Selects all sharp edges in the active mesh."""
     obj = bpy.context.active_object
@@ -94,16 +99,23 @@ def select_hard_edges() -> str:
         return "No active mesh object selected."
 
     _switch_to_object()
-    count = sum(1 for e in obj.data.edges if e.use_edge_sharp)
+    edge_count = len(obj.data.edges)
+    sharp = np.zeros(edge_count, dtype=bool)
+    obj.data.edges.foreach_get("use_edge_sharp", sharp)
+    count = int(sharp.sum())
+    obj.data.edges.foreach_set("select", sharp)
 
-    for edge in obj.data.edges:
-        edge.select = edge.use_edge_sharp
-
-    _switch_to_edit()
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    _switch_to_edit("EDGE")
     return f"{count} sharp edges detected."
 
 
-@AgentTools.register()
+@AgentTools.register(
+    display_name="Detect Mesh Intersections",
+    is_quick_action=True,
+    category="Geometry",
+)
 def select_faces_with_intersecting_meshes() -> str:
     """Selects faces where selected meshes intersect."""
     meshes = list(_selected_meshes())
@@ -142,14 +154,12 @@ def select_faces_with_intersecting_meshes() -> str:
     return "No intersections found. Scene is clean."
 
 
-def _find_ngons(obj, select: bool = False) -> tuple:
+def _find_ngons(obj) -> list:
     """Finds n-gon face indices in a mesh object."""
     indices = []
     for idx, face in enumerate(obj.data.polygons):
         if len(face.vertices) > 4:
             indices.append(idx)
-            if select:
-                face.select = True
     return indices
 
 
@@ -164,24 +174,28 @@ def detect_ngons() -> str:
     if not meshes:
         return "No objects selected."
 
-    total = 0
-    results = []
-
+    indices_by_obj = {}
     for obj in meshes:
-        bpy.context.view_layer.objects.active = obj
-        _switch_to_object()
-        _reset_selection(obj)
-
-        indices = _find_ngons(obj, select=True)
+        indices = _find_ngons(obj)
         if indices:
-            _switch_to_edit()
-            results.append(f"{obj.name} ({len(indices)})")
-            total += len(indices)
-        else:
-            _switch_to_object()
+            indices_by_obj[obj] = indices
 
-    if total == 0:
+    if not indices_by_obj:
         return "No n-gons found. Mesh is clean."
+
+    total = sum(len(idx) for idx in indices_by_obj.values())
+    results = [f"{obj.name} ({len(idx)})" for obj, idx in indices_by_obj.items()]
+
+    _switch_to_object()
+    for obj in indices_by_obj:
+        sel = np.zeros(len(obj.data.polygons), dtype=bool)
+        sel[indices_by_obj[obj]] = True
+        obj.data.polygons.foreach_set("select", sel)
+        obj.select_set(True)
+
+    if bpy.context.selected_objects:
+        bpy.context.view_layer.objects.active = list(indices_by_obj.keys())[0]
+        _switch_to_edit()
 
     return f"Found {total} n-gons: {', '.join(results)}"
 
@@ -197,25 +211,123 @@ def triangulate_ngons() -> str:
     if not meshes:
         return "No objects selected."
 
-    total = 0
-    results = []
-
+    indices_by_obj = {}
     for obj in meshes:
-        bpy.context.view_layer.objects.active = obj
-        _switch_to_object()
-        _reset_selection(obj)
-
-        indices = _find_ngons(obj, select=True)
+        indices = _find_ngons(obj)
         if indices:
-            _switch_to_edit()
-            bpy.ops.mesh.quads_convert_to_tris()
-            _switch_to_object()
-            results.append(f"{obj.name} ({len(indices)})")
-            total += len(indices)
-        else:
-            _switch_to_object()
+            indices_by_obj[obj] = indices
 
-    if total == 0:
+    if not indices_by_obj:
         return "No n-gons to triangulate. Mesh is already clean."
 
+    total = sum(len(idx) for idx in indices_by_obj.values())
+    results = [f"{obj.name} ({len(idx)})" for obj, idx in indices_by_obj.items()]
+
+    _switch_to_object()
+    for obj in indices_by_obj:
+        obj.select_set(True)
+
+    if bpy.context.selected_objects:
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.quads_convert_to_tris()
+        _switch_to_object()
+
     return f"Triangulated {total} n-gons: {', '.join(results)}"
+
+
+def _has_subd_modifier(obj) -> bool:
+    """Check if object has an active Subdivision Surface modifier."""
+    for mod in obj.modifiers:
+        if mod.type == "SUBSURF":
+            return True
+    return False
+
+
+def _find_nonplanar_faces(obj, threshold: float = 5.0) -> list:
+    """Finds non-planar (bent) face indices in a mesh object."""
+    from mathutils import Vector
+
+    threshold_rad = math.radians(threshold)
+    matrix_world = obj.matrix_world
+    mesh = obj.data
+
+    indices = []
+    for idx, face in enumerate(mesh.polygons):
+        if len(face.vertices) < 4:
+            continue
+
+        verts = [matrix_world @ mesh.vertices[v].co for v in face.vertices]
+
+        if len(verts) == 4:
+            v0, v1, v2, v3 = verts
+            normal_a = (v1 - v0).cross(v2 - v0).normalized()
+            normal_b = (v0 - v2).cross(v3 - v2).normalized()
+            if normal_a.length > 0.0001 and normal_b.length > 0.0001:
+                angle = normal_a.angle(normal_b)
+                if angle > threshold_rad:
+                    indices.append(idx)
+        else:
+            base_normal = (verts[1] - verts[0]).cross(verts[2] - verts[0]).normalized()
+            if base_normal.length > 0.0001:
+                for i in range(3, len(verts)):
+                    test_normal = (
+                        (verts[1] - verts[0]).cross(verts[i] - verts[0]).normalized()
+                    )
+                    if test_normal.length > 0.0001:
+                        angle = base_normal.angle(test_normal)
+                        if angle > threshold_rad:
+                            indices.append(idx)
+                            break
+
+    return indices
+
+
+@AgentTools.register(
+    display_name="Detect Non-Planar Faces",
+    is_quick_action=True,
+    category="Geometry",
+)
+def detect_nonplanar_faces(threshold: float = 5.0) -> str:
+    """Detects non-planar (bent) faces in selected meshes."""
+    meshes = list(_selected_meshes())
+    if not meshes:
+        return "No objects selected."
+
+    total = 0
+    results = []
+    has_subd = False
+    indices_by_obj = {}
+
+    for obj in meshes:
+        if _has_subd_modifier(obj):
+            has_subd = True
+
+        indices = _find_nonplanar_faces(obj, threshold)
+        if indices:
+            indices_by_obj[obj] = indices
+            results.append(f"{obj.name} ({len(indices)})")
+            total += len(indices)
+
+    if total == 0:
+        msg = "No non-planar faces found. Mesh is clean."
+        if has_subd:
+            msg += " (Note: Subdivision Surface modifiers detected)"
+        return msg
+
+    _switch_to_object()
+
+    for obj, indices in indices_by_obj.items():
+        local_sel = np.zeros(len(obj.data.polygons), dtype=bool)
+        local_sel[indices] = True
+        obj.data.polygons.foreach_set("select", local_sel)
+        obj.select_set(True)
+
+    bpy.context.view_layer.objects.active = list(indices_by_obj.keys())[0]
+    _switch_to_edit()
+
+    response = f"Found {total} non-planar faces: {', '.join(results)}"
+    if has_subd:
+        response += (
+            " (Note: Subdivision Surface modifiers detected - results may be expected)"
+        )
+    return response

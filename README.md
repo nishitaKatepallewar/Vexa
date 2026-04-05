@@ -4,7 +4,7 @@ QC checks in seconds.
 
 ## Setup
 
-### Development (for active development)
+### Development 
 1. Remove any existing `vexa` folder if present:
    ```bash
    rm -rf ~/.config/blender/<version>/scripts/addons/vexa

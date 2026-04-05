@@ -24,12 +24,13 @@ Both paths use the same underlying tools from the registry.
 
 ## Implemented Checks
 
-- **Detect N-gons** - Find and select faces with 5+ vertices
-- **Triangulate N-gons** - Convert n-gons to triangles
-- **count_vertices** - Count total vertices
-- **rename_object(new_name)** - Rename active object
-- **select_hard_edges** - Select sharp edges
-- **select_faces_with_intersecting_meshes** - Find intersecting faces
+- **Detect N-gons** 
+- **Triangulate N-gons** 
+- **count_vertices**
+- **rename_object(new_name)** 
+- **select_hard_edges** 
+- **select_faces_with_intersecting_meshes** 
+- **detect_nonplanar_faces**
 
 ## Adding New Tools
 
