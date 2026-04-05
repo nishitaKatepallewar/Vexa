@@ -36,19 +36,25 @@ AI interpretation remains separate from Blender operations.
 
 ## Setup
 
-### Development (recommended for active development)
-1. Create a symlink from Blender's addons folder to this directory:
+### Development (for active development)
+1. Remove any existing `vexa` folder if present:
    ```bash
-   # On Linux/macOS
+   rm -rf ~/.config/blender/<version>/scripts/addons/vexa
+   ```
+2. Create a symlink from Blender's addons folder to this directory:
+   ```bash
    ln -s /path/to/Vexa/vexa ~/.config/blender/<version>/scripts/addons/vexa
    ```
-   - Replace `<version>` with your Blender version (e.g., `4.3`)
+   - Replace `<version>` with your Blender major.minor (e.g., `4.5` for 4.5.4 LTS)
    - Find the exact path: Blender > Edit > Preferences > File Paths > Scripting
-2. Check the box next to "Vexa" in Add-ons
-3. Changes to the code reload automatically in Blender
+3. In Blender: Edit > Preferences > Add-ons > Search "Vexa" > Check the box to enable
+4. Re-enter your Gemini API Key (preferences don't persist with symlink)
+5. Changes to the code reload automatically in Blender
+
+**Troubleshooting**: If "Vexa" doesn't appear after creating symlink, restart Blender.
 
 ### Production
-1. Build the zip:
+1. Build the zip (run from project root):
    ```bash
    ./build.sh
    ```
