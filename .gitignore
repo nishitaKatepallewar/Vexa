@@ -1,0 +1,6 @@
+.agent/
+tests/
+__pycache__/
+*.pyc
+assets/
+vexa*.zip
