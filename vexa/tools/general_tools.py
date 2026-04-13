@@ -243,43 +243,109 @@ def _has_subd_modifier(obj) -> bool:
     return False
 
 
-def _find_nonplanar_faces(obj, threshold: float = 5.0) -> list:
-    """Finds non-planar (bent) face indices in a mesh object."""
+def _compute_quad_nonplanarity(verts, EPSILON=1e-6):
+    """Compute max angle between triangles formed by both diagonals.
+
+    Diagonal 0-2: tests triangles (v0,v1,v2) and (v0,v2,v3)
+    Diagonal 1-3: tests triangles (v0,v1,v3) and (v1,v2,v3)
+    Returns max angle between the two diagonal tests.
+    """
+    v0, v1, v2, v3 = verts[0], verts[1], verts[2], verts[3]
+
+    # Diagonal 0-2: triangles (v0,v1,v2) and (v0,v2,v3)
+    tri_a = (v1 - v0).cross(v2 - v0)
+    tri_b = (v2 - v0).cross(v3 - v0)
+
+    # Diagonal 1-3: triangles (v0,v1,v3) and (v1,v2,v3)
+    tri_c = (v1 - v0).cross(v3 - v0)
+    tri_d = (v2 - v1).cross(v3 - v1)
+
+    angle_d1 = 0.0
+    if tri_a.length > EPSILON and tri_b.length > EPSILON:
+        angle_d1 = tri_a.normalized().angle(tri_b.normalized())
+
+    angle_d2 = 0.0
+    if tri_c.length > EPSILON and tri_d.length > EPSILON:
+        angle_d2 = tri_c.normalized().angle(tri_d.normalized())
+
+    return max(angle_d1, angle_d2)
+
+
+def _newell_normal(verts):
+    """Compute best-fit normal using Newell's method - numerically stable for all n-gons."""
+    from mathutils import Vector
+
+    n = Vector((0, 0, 0))
+    count = len(verts)
+    for i in range(count):
+        a, b = verts[i], verts[(i + 1) % count]
+        n.x += (a.y - b.y) * (a.z + b.z)
+        n.y += (a.z - b.z) * (a.x + b.x)
+        n.z += (a.x - b.x) * (a.y + b.y)
+    return n
+
+
+def _is_ngon_planar(verts, threshold_rad, EPSILON=1e-6):
+    """Check if n-gon is planar using fan-angle test against Newell normal.
+
+    Uses centroid-based triangle fan - scale-independent, angle-consistent
+    with quad method, geometrically sound for convex and concave n-gons.
+    """
+    from mathutils import Vector
+
+    if len(verts) < 4:
+        return True
+
+    newell_normal = _newell_normal(verts)
+    if newell_normal.length < EPSILON:
+        return True
+
+    newell_normal = newell_normal.normalized()
+
+    centroid = sum(verts, Vector()) / len(verts)
+
+    for i in range(len(verts)):
+        a = verts[i]
+        b = verts[(i + 1) % len(verts)]
+
+        tri_normal = (a - centroid).cross(b - centroid)
+        if tri_normal.length < EPSILON:
+            continue
+
+        if newell_normal.angle(tri_normal.normalized()) > threshold_rad:
+            return False
+
+    return True
+
+
+def _find_nonplanar_faces_core(bm, threshold: float = 5.0):
+    """Unified core detection using BMesh - works in Edit Mode.
+
+    Uses local space coordinates to match BMesh operator behavior.
+    Uses Newell's method for robust n-gon detection.
+    """
     from mathutils import Vector
 
     threshold_rad = math.radians(threshold)
-    matrix_world = obj.matrix_world
-    mesh = obj.data
+    EPSILON = 1e-6
+    bm.faces.ensure_lookup_table()
 
-    indices = []
-    for idx, face in enumerate(mesh.polygons):
-        if len(face.vertices) < 4:
+    nonplanar_faces = []
+    for face in bm.faces:
+        if len(face.verts) < 4:
             continue
 
-        verts = [matrix_world @ mesh.vertices[v].co for v in face.vertices]
+        verts = [v.co for v in face.verts]
 
         if len(verts) == 4:
-            v0, v1, v2, v3 = verts
-            normal_a = (v1 - v0).cross(v2 - v0).normalized()
-            normal_b = (v0 - v2).cross(v3 - v2).normalized()
-            if normal_a.length > 0.0001 and normal_b.length > 0.0001:
-                angle = normal_a.angle(normal_b)
-                if angle > threshold_rad:
-                    indices.append(idx)
+            max_angle = _compute_quad_nonplanarity(verts, EPSILON)
+            if max_angle > threshold_rad:
+                nonplanar_faces.append(face)
         else:
-            base_normal = (verts[1] - verts[0]).cross(verts[2] - verts[0]).normalized()
-            if base_normal.length > 0.0001:
-                for i in range(3, len(verts)):
-                    test_normal = (
-                        (verts[1] - verts[0]).cross(verts[i] - verts[0]).normalized()
-                    )
-                    if test_normal.length > 0.0001:
-                        angle = base_normal.angle(test_normal)
-                        if angle > threshold_rad:
-                            indices.append(idx)
-                            break
+            if not _is_ngon_planar(verts, threshold_rad, EPSILON):
+                nonplanar_faces.append(face)
 
-    return indices
+    return nonplanar_faces
 
 
 @AgentTools.register(
@@ -288,7 +354,12 @@ def _find_nonplanar_faces(obj, threshold: float = 5.0) -> list:
     category="Geometry",
 )
 def detect_nonplanar_faces(threshold: float = 5.0) -> str:
-    """Detects non-planar (bent) faces in selected meshes."""
+    """Detects non-planar (bent) faces in selected meshes.
+
+    Uses unified core detection for consistency with split operation.
+    """
+    import bmesh
+
     meshes = list(_selected_meshes())
     if not meshes:
         return "No objects selected."
@@ -296,38 +367,108 @@ def detect_nonplanar_faces(threshold: float = 5.0) -> str:
     total = 0
     results = []
     has_subd = False
-    indices_by_obj = {}
 
-    for obj in meshes:
-        if _has_subd_modifier(obj):
-            has_subd = True
+    original_mode = bpy.context.object.mode
 
-        indices = _find_nonplanar_faces(obj, threshold)
-        if indices:
-            indices_by_obj[obj] = indices
-            results.append(f"{obj.name} ({len(indices)})")
-            total += len(indices)
+    try:
+        for obj in meshes:
+            if _has_subd_modifier(obj):
+                has_subd = True
 
-    if total == 0:
-        msg = "No non-planar faces found. Mesh is clean."
+            bpy.ops.object.mode_set(mode="OBJECT")
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.mode_set(mode="EDIT")
+
+            bpy.ops.mesh.select_all(action="DESELECT")
+
+            bm = bmesh.from_edit_mesh(obj.data)
+            nonplanar_faces = _find_nonplanar_faces_core(bm, threshold)
+
+            if nonplanar_faces:
+                for f in nonplanar_faces:
+                    f.select = True
+                bmesh.update_edit_mesh(obj.data)
+                results.append(f"{obj.name} ({len(nonplanar_faces)})")
+                total += len(nonplanar_faces)
+            else:
+                bmesh.update_edit_mesh(obj.data)
+
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+        if total == 0:
+            msg = "No non-planar faces found. Mesh is clean."
+            if has_subd:
+                msg += " (Note: Subdivision Surface modifiers detected)"
+            return msg
+
+        response = f"Found {total} non-planar faces: {', '.join(results)}"
         if has_subd:
-            msg += " (Note: Subdivision Surface modifiers detected)"
-        return msg
+            response += " (Note: Subdivision Surface modifiers detected - results may be expected)"
+        return response
 
-    _switch_to_object()
+    finally:
+        if original_mode != "OBJECT":
+            bpy.ops.object.mode_set(mode=original_mode)
 
-    for obj, indices in indices_by_obj.items():
-        local_sel = np.zeros(len(obj.data.polygons), dtype=bool)
-        local_sel[indices] = True
-        obj.data.polygons.foreach_set("select", local_sel)
-        obj.select_set(True)
 
-    bpy.context.view_layer.objects.active = list(indices_by_obj.keys())[0]
-    _switch_to_edit()
+@AgentTools.register(
+    display_name="Triangulate Non-Planar Faces",
+    is_quick_action=True,
+    category="Geometry",
+)
+def triangulate_nonplanar_faces(threshold: float = 5.0) -> str:
+    """Triangulates non-planar faces in selected meshes.
 
-    response = f"Found {total} non-planar faces: {', '.join(results)}"
-    if has_subd:
-        response += (
-            " (Note: Subdivision Surface modifiers detected - results may be expected)"
-        )
-    return response
+    Uses unified core detection - same logic for detect and triangulate.
+    Processes each selected object individually in Edit Mode.
+    """
+    import bmesh
+
+    meshes = list(_selected_meshes())
+    if not meshes:
+        return "No objects selected."
+
+    bpy.ops.ed.undo_push(message="Triangulate Non-Planar Faces")
+
+    total_triangulated = 0
+    processed = []
+
+    original_mode = bpy.context.object.mode
+
+    try:
+        for obj in meshes:
+            bpy.ops.object.mode_set(mode="OBJECT")
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.mode_set(mode="EDIT")
+
+            bm = bmesh.from_edit_mesh(obj.data)
+            nonplanar_faces = _find_nonplanar_faces_core(bm, threshold)
+
+            if not nonplanar_faces:
+                bpy.ops.object.mode_set(mode="OBJECT")
+                continue
+
+            source_face_count = len(nonplanar_faces)
+
+            bmesh.ops.triangulate(
+                bm,
+                faces=nonplanar_faces,
+                quad_method="SHORT_EDGE",
+                ngon_method="BEAUTY",
+            )
+
+            total_triangulated += source_face_count
+
+            bmesh.update_edit_mesh(obj.data)
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+            processed.append(f"{obj.name} ({source_face_count})")
+
+    finally:
+        if original_mode != "OBJECT":
+            bpy.ops.object.mode_set(mode=original_mode)
+
+    if not processed:
+        return "No non-planar faces found. Mesh is clean."
+
+    return f"Triangulated {total_triangulated} faces: {', '.join(processed)}"
