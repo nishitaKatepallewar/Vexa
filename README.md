@@ -19,9 +19,10 @@ QC checks in seconds.
 Changes to the code reload automatically in Blender
 
 ### Production
-1. Build the zip (run from project root):
+1. Build the zip (run from Vexa directory):
    ```bash
-   ./build.sh
+   cd Vexa
+   ./vexa/build.sh
    ```
 2. In Blender: Edit > Preferences > Add-ons > Install > Select `vexa.zip` > Check the box to enable
 4. Expand the add-on, paste Gemini API Key
