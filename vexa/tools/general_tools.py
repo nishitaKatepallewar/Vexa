@@ -243,32 +243,45 @@ def _has_subd_modifier(obj) -> bool:
     return False
 
 
-def _compute_quad_nonplanarity(verts, EPSILON=1e-6):
-    """Compute max angle between triangles formed by both diagonals.
+def _is_face_planar(verts, threshold_rad, EPSILON=1e-6):
+    """Check if face is planar using point-to-plane distance.
 
-    Diagonal 0-2: tests triangles (v0,v1,v2) and (v0,v2,v3)
-    Diagonal 1-3: tests triangles (v0,v1,v3) and (v1,v2,v3)
-    Returns max angle between the two diagonal tests.
+    Defines a plane from the first 3 vertices, then checks how far
+    each remaining vertex deviates from that plane. This test catches
+    all vertices independently, unlike diagonal test which can miss
+    symmetric warping.
     """
-    v0, v1, v2, v3 = verts[0], verts[1], verts[2], verts[3]
+    import math
+    from mathutils.geometry import distance_point_to_plane
+    from mathutils import Vector
 
-    # Diagonal 0-2: triangles (v0,v1,v2) and (v0,v2,v3)
-    tri_a = (v1 - v0).cross(v2 - v0)
-    tri_b = (v2 - v0).cross(v3 - v0)
+    if len(verts) < 4:
+        return True
 
-    # Diagonal 1-3: triangles (v0,v1,v3) and (v1,v2,v3)
-    tri_c = (v1 - v0).cross(v3 - v0)
-    tri_d = (v2 - v1).cross(v3 - v1)
+    plane_co = verts[0]
+    plane_no = Vector(
+        (
+            (verts[1].y - verts[0].y) * (verts[2].z - verts[0].z)
+            - (verts[1].z - verts[0].z) * (verts[2].y - verts[0].y),
+            (verts[1].z - verts[0].z) * (verts[2].x - verts[0].x)
+            - (verts[1].x - verts[0].x) * (verts[2].z - verts[0].z),
+            (verts[1].x - verts[0].x) * (verts[2].y - verts[0].y)
+            - (verts[1].y - verts[0].y) * (verts[2].x - verts[0].x),
+        )
+    )
+    if plane_no.length < EPSILON:
+        return True
+    plane_no = plane_no.normalized()
 
-    angle_d1 = 0.0
-    if tri_a.length > EPSILON and tri_b.length > EPSILON:
-        angle_d1 = tri_a.normalized().angle(tri_b.normalized())
+    for v in verts[1:]:
+        dist = abs(distance_point_to_plane(v, plane_co, plane_no))
+        radius = (v - plane_co).length
+        if radius > EPSILON:
+            angle = math.asin(min(dist / radius, 1.0))
+            if angle > threshold_rad:
+                return False
 
-    angle_d2 = 0.0
-    if tri_c.length > EPSILON and tri_d.length > EPSILON:
-        angle_d2 = tri_c.normalized().angle(tri_d.normalized())
-
-    return max(angle_d1, angle_d2)
+    return True
 
 
 def _newell_normal(verts):
@@ -285,44 +298,11 @@ def _newell_normal(verts):
     return n
 
 
-def _is_ngon_planar(verts, threshold_rad, EPSILON=1e-6):
-    """Check if n-gon is planar using fan-angle test against Newell normal.
-
-    Uses centroid-based triangle fan - scale-independent, angle-consistent
-    with quad method, geometrically sound for convex and concave n-gons.
-    """
-    from mathutils import Vector
-
-    if len(verts) < 4:
-        return True
-
-    newell_normal = _newell_normal(verts)
-    if newell_normal.length < EPSILON:
-        return True
-
-    newell_normal = newell_normal.normalized()
-
-    centroid = sum(verts, Vector()) / len(verts)
-
-    for i in range(len(verts)):
-        a = verts[i]
-        b = verts[(i + 1) % len(verts)]
-
-        tri_normal = (a - centroid).cross(b - centroid)
-        if tri_normal.length < EPSILON:
-            continue
-
-        if newell_normal.angle(tri_normal.normalized()) > threshold_rad:
-            return False
-
-    return True
-
-
-def _find_nonplanar_faces_core(bm, threshold: float = 5.0):
+def _find_nonplanar_faces_core(bm, threshold: float = 0.001):
     """Unified core detection using BMesh - works in Edit Mode.
 
-    Uses local space coordinates to match BMesh operator behavior.
-    Uses Newell's method for robust n-gon detection.
+    Uses point-to-plane distance test for all face types.
+    Default threshold matches studio tool expectations.
     """
     from mathutils import Vector
 
@@ -336,14 +316,8 @@ def _find_nonplanar_faces_core(bm, threshold: float = 5.0):
             continue
 
         verts = [v.co for v in face.verts]
-
-        if len(verts) == 4:
-            max_angle = _compute_quad_nonplanarity(verts, EPSILON)
-            if max_angle > threshold_rad:
-                nonplanar_faces.append(face)
-        else:
-            if not _is_ngon_planar(verts, threshold_rad, EPSILON):
-                nonplanar_faces.append(face)
+        if not _is_face_planar(verts, threshold_rad, EPSILON):
+            nonplanar_faces.append(face)
 
     return nonplanar_faces
 
@@ -353,10 +327,11 @@ def _find_nonplanar_faces_core(bm, threshold: float = 5.0):
     is_quick_action=True,
     category="Geometry",
 )
-def detect_nonplanar_faces(threshold: float = 5.0) -> str:
+def detect_nonplanar_faces(threshold: float = 0.001) -> str:
     """Detects non-planar (bent) faces in selected meshes.
 
-    Uses unified core detection for consistency with split operation.
+    Uses point-to-plane distance test for accurate detection.
+    Default threshold 0.001 degrees matches studio tool expectations.
     """
     import bmesh
 
@@ -407,8 +382,12 @@ def detect_nonplanar_faces(threshold: float = 5.0) -> str:
         return response
 
     finally:
-        if original_mode != "OBJECT":
+        if total > 0:
+            bpy.ops.object.mode_set(mode="EDIT")
+        elif original_mode != "OBJECT":
             bpy.ops.object.mode_set(mode=original_mode)
+        else:
+            bpy.ops.object.mode_set(mode="OBJECT")
 
 
 @AgentTools.register(
@@ -416,11 +395,11 @@ def detect_nonplanar_faces(threshold: float = 5.0) -> str:
     is_quick_action=True,
     category="Geometry",
 )
-def triangulate_nonplanar_faces(threshold: float = 5.0) -> str:
+def triangulate_nonplanar_faces(threshold: float = 0.001) -> str:
     """Triangulates non-planar faces in selected meshes.
 
-    Uses unified core detection - same logic for detect and triangulate.
-    Processes each selected object individually in Edit Mode.
+    Uses point-to-plane distance test - same logic for detect and triangulate.
+    Default threshold 0.001 matches studio tool expectations.
     """
     import bmesh
 
