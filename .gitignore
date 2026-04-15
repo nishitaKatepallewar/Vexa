@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 assets/
 vexa*.zip
+experimental/
