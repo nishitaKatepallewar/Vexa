@@ -26,11 +26,15 @@ Both paths use the same underlying tools from the registry.
 
 - **Detect N-gons** 
 - **Triangulate N-gons** 
-- **count_vertices**
-- **rename_object(new_name)** 
-- **select_hard_edges** 
-- **select_faces_with_intersecting_meshes** 
-- **detect_nonplanar_faces**
+- **Count vertices**
+- **Rename object** 
+- **Select hard edges** 
+- **Select faces with intersecting meshes** 
+- **Detect nonplanar faces**
+- **Triangulate nonplanar faces**
+- **Detect missing textures**
+- **Detect color space issues**
+
 
 ## Adding New Tools
 
