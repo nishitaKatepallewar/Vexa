@@ -6,6 +6,7 @@ import inspect
 import bpy
 
 from ..core.client import create_llm_client
+from ..core.prefs import get_prefs
 from ..core.registry import AgentTools
 
 
@@ -18,16 +19,16 @@ class VexaExecutePromptOperator(bpy.types.Operator):
     def execute(self, context: bpy.types.Context) -> set[str]:
         scene = context.scene
         prompt = scene.get("vexa_prompt", "")
-        prefs = context.preferences.addons["vexa"].preferences
-        api_key = prefs.api_key
-        model_name = prefs.model_name
+        prefs = get_prefs(context)
+        api_key = prefs.api_key.strip() if prefs else ""
+        model_name = prefs.model_name if prefs else ""
 
         if not prompt:
             self.report({"WARNING"}, "Please enter a prompt")
             return {"CANCELLED"}
 
         if not api_key:
-            self.report({"ERROR"}, "No API Key found. Check Preferences.")
+            self.report({"ERROR"}, "Add a Gemini API key in Vexa's preferences to use the AI assistant")
             return {"CANCELLED"}
 
         client = create_llm_client("gemini", api_key, model_name)

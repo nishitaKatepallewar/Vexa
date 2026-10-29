@@ -19,13 +19,13 @@ bl_info = {
 
 
 class VexaPreferences(bpy.types.AddonPreferences):
-    """Add-on preferences to store API credentials."""
+    """Add-on preferences. All checks work without any of these settings."""
 
     bl_idname = __name__
 
     api_key: bpy.props.StringProperty(
-        name="Gemini API Key",
-        description="Enter your Google Gemini API Key",
+        name="Gemini API Key (optional)",
+        description="Only needed for the AI instruction box. All checks work without it",
         subtype="PASSWORD",
     )
 
@@ -37,8 +37,11 @@ class VexaPreferences(bpy.types.AddonPreferences):
 
     def draw(self, context: bpy.types.Context) -> None:
         layout = self.layout
-        layout.prop(self, "api_key")
-        layout.prop(self, "model_name")
+        box = layout.box()
+        box.label(text="AI assistant (optional)", icon="EXPERIMENTAL")
+        box.label(text="Checks and fixes work without a key. Add one to type instructions in the panel.")
+        box.prop(self, "api_key")
+        box.prop(self, "model_name")
 
 
 def _import_tools() -> None:
