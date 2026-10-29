@@ -55,7 +55,7 @@ class VexaMainPanel(bpy.types.Panel):
         # The AI instruction box only appears once a Gemini key is set.
         if has_ai_key(context):
             layout.separator()
-            layout.label(text="Ask Vexa (AI)", icon="EXPERIMENTAL")
+            layout.label(text="Ask Vexa", icon="EXPERIMENTAL")
             row = layout.row(align=True)
             row.prop(scene, "vexa_prompt", text="")
             row.operator("vexa.execute_prompt", text="", icon="PLAY")
