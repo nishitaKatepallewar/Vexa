@@ -2,6 +2,7 @@
 
 import bpy
 
+from ..core.prefs import has_ai_key
 from ..core.registry import AgentTools
 
 _CACHED_TOOLS_BY_CATEGORY = None
@@ -48,22 +49,23 @@ class VexaMainPanel(bpy.types.Panel):
         layout = self.layout
         scene = context.scene
 
-        layout.label(text="Instruction:")
-
-        row = layout.row(align=True)
-        row.prop(scene, "vexa_prompt", text="")
-        row.operator("vexa.execute_prompt", text="", icon="PLAY")
-
-        layout.separator()
-
+        # Checks first: they work for everyone, no key needed.
         self._draw_quick_actions(context, layout)
 
-        layout.separator()
+        # The AI instruction box only appears once a Gemini key is set.
+        if has_ai_key(context):
+            layout.separator()
+            layout.label(text="Ask Vexa (AI)", icon="EXPERIMENTAL")
+            row = layout.row(align=True)
+            row.prop(scene, "vexa_prompt", text="")
+            row.operator("vexa.execute_prompt", text="", icon="PLAY")
 
         response = scene.get("vexa_last_response", "")
         if response:
+            layout.separator()
             box = layout.box()
-            box.label(text=response)
+            for line in str(response).splitlines() or [""]:
+                box.label(text=line)
 
     def _draw_quick_actions(
         self, context: bpy.types.Context, layout: bpy.types.UILayout

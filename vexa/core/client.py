@@ -32,25 +32,38 @@ class GeminiClient(LLMClient):
     """Google Gemini REST API client."""
 
     DEFAULT_MODEL = "gemini-2.5-flash"
-    TIMEOUT_SECONDS = 10
+    TIMEOUT_SECONDS = 30
 
     def __init__(self, api_key: str, model_name: str = DEFAULT_MODEL):
         self.api_key = api_key
         self.host = "generativelanguage.googleapis.com"
         self.model = model_name
 
+    def request_spec(self, prompt: str, tools_schema: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Everything needed to make the HTTP request, as plain JSON-safe data.
+
+        Lets the request run in a separate process (see core/ai_worker.py), since
+        Blender doesn't support Python threads that outlive the calling script.
+        """
+        return {
+            "host": self.host,
+            # The key goes in a header, not the URL, so it never lands in logs or proxies.
+            "path": f"/v1beta/models/{self.model}:generateContent",
+            "headers": {"Content-Type": "application/json", "x-goog-api-key": self.api_key},
+            "body": {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "tools": [{"function_declarations": tools_schema}],
+                "tool_config": {"function_calling_config": {"mode": "AUTO"}},
+            },
+            "timeout": self.TIMEOUT_SECONDS,
+        }
+
     def generate_content(
         self, prompt: str, tools_schema: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        path = f"/v1beta/models/{self.model}:generateContent?key={self.api_key}"
-
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "tools": [{"function_declarations": tools_schema}],
-            "tool_config": {"function_calling_config": {"mode": "AUTO"}},
-        }
-
-        headers = {"Content-Type": "application/json"}
+        """Blocking request. Prefer core.ai_worker from inside Blender's UI."""
+        spec = self.request_spec(prompt, tools_schema)
+        path, payload, headers = spec["path"], spec["body"], spec["headers"]
         context = ssl.create_default_context()
 
         try:

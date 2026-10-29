@@ -14,7 +14,6 @@ QC checks in seconds.
    ln -s /path/to/Vexa/vexa ~/.config/blender/<version>/scripts/addons/vexa
    ```
 3. In Blender: Edit > Preferences > Add-ons > Search "Vexa" > Check the box to enable
-4. Expand the add-on, paste [Gemini API Key](https://aistudio.google.com/app/apikey)
 
 Changes to the code reload automatically in Blender
 
@@ -25,12 +24,21 @@ Changes to the code reload automatically in Blender
    ./vexa/build.sh
    ```
 2. In Blender: Edit > Preferences > Add-ons > Install > Select `vexa.zip` > Check the box to enable
-4. Expand the add-on, paste Gemini API Key
 
+No account or API key is needed. All checks and fixes run locally.
 
 ## Usage
 
 1. Open 3D Viewport Sidebar (Press `N`)
 2. Find the Vexa tab
 3. Select an object
-4. Type instruction → Click Play, **OR** click a quick action button
+4. Click a check
+
+## Optional: AI assistant
+
+To type instructions in plain English instead of clicking checks:
+
+1. Expand Vexa in Edit > Preferences > Add-ons
+2. Paste a [Gemini API Key](https://aistudio.google.com/app/apikey)
+
+An "Ask Vexa (AI)" box then appears in the panel. Without a key it stays hidden.
