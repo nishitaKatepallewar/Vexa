@@ -24,7 +24,7 @@ class VexaPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
 
     api_key: bpy.props.StringProperty(
-        name="Gemini API Key (optional)",
+        name="Gemini API Key",
         description="Only needed for the AI instruction box. All checks work without it",
         subtype="PASSWORD",
     )
@@ -39,7 +39,6 @@ class VexaPreferences(bpy.types.AddonPreferences):
         layout = self.layout
         box = layout.box()
         box.label(text="AI assistant (optional)", icon="EXPERIMENTAL")
-        box.label(text="Checks and fixes work without a key. Add one to type instructions in the panel.")
         box.prop(self, "api_key")
         box.prop(self, "model_name")
 
