@@ -42,7 +42,8 @@ class GeminiClient(LLMClient):
     def generate_content(
         self, prompt: str, tools_schema: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        path = f"/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        # The key goes in a header, not the URL, so it never lands in logs or proxies.
+        path = f"/v1beta/models/{self.model}:generateContent"
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -50,7 +51,7 @@ class GeminiClient(LLMClient):
             "tool_config": {"function_calling_config": {"mode": "AUTO"}},
         }
 
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "x-goog-api-key": self.api_key}
         context = ssl.create_default_context()
 
         try:
