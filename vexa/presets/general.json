@@ -1,0 +1,18 @@
+{
+  "id": "general",
+  "name": "General clean-up",
+  "description": "Engine-agnostic hygiene checks. Free.",
+  "order": 0,
+  "checks": {
+    "detect_unapplied_transforms": {"severity": "WARNING"},
+    "detect_negative_scale": {"severity": "ERROR"},
+    "detect_ngons": {"severity": "WARNING"},
+    "detect_nonplanar_faces": {"severity": "INFO"},
+    "detect_intersecting_meshes": {"severity": "WARNING"},
+    "detect_missing_uv_maps": {"severity": "ERROR"},
+    "detect_missing_textures": {"severity": "ERROR"},
+    "detect_color_space_issues": {"severity": "WARNING"},
+    "detect_unused_material_slots": {"severity": "INFO"},
+    "detect_default_names": {"severity": "INFO"}
+  }
+}

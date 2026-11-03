@@ -1,0 +1,20 @@
+{
+  "id": "fab",
+  "name": "Fab",
+  "description": "Based on Fab's file format and structure requirements.",
+  "source": "https://dev.epicgames.com/documentation/en-us/fab/asset-file-format-and-structure-requirements-in-fab",
+  "order": 20,
+  "checks": {
+    "detect_unapplied_transforms": {"severity": "WARNING", "check_rotation": true},
+    "detect_negative_scale": {"severity": "ERROR"},
+    "detect_invalid_name_characters": {"severity": "ERROR", "pattern": "^[A-Za-z0-9_]+$"},
+    "detect_default_names": {"severity": "WARNING"},
+    "detect_missing_uv_maps": {"severity": "ERROR"},
+    "detect_missing_textures": {"severity": "ERROR"},
+    "detect_invalid_texture_sizes": {"severity": "WARNING", "power_of_two": true, "max_size": 8192},
+    "detect_color_space_issues": {"severity": "WARNING"},
+    "detect_intersecting_meshes": {"severity": "WARNING"},
+    "detect_unused_material_slots": {"severity": "WARNING"},
+    "detect_invalid_collision_meshes": {"severity": "ERROR"}
+  }
+}
