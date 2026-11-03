@@ -7,6 +7,7 @@ MODULES = (
     "general_tools",
     "geometry_tools",
     "transform_tools",
+    "uv_tools",
     "texture_tools",
 )
 
