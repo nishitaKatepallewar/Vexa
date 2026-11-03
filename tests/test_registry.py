@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import bpy  # noqa: E402
 
 from vexa import tools  # noqa: E402
+from vexa.core import dispatch  # noqa: E402
 from vexa.core.registry import AgentTools  # noqa: E402
 from vexa.core.results import Issue  # noqa: E402
 from vexa.core.scope import current  # noqa: E402
@@ -76,7 +77,7 @@ def check_called_as_a_tool_runs_on_the_selection():
     cube("SM_B", loc=(5, 0, 0)).select_set(False)
     a.select_set(True)
     with temporary_tools():
-        text = AgentTools.get_tool("_t_flag_all")(label="here")
+        text = dispatch.invoke("_t_flag_all", {"label": "here"})
         assert text.startswith("Flag all:") and "SM_A: flagged here" in text and "SM_B" not in text, text
         assert bpy.context.object.mode == "EDIT"  # flagged faces were selected
         bpy.ops.object.mode_set(mode="OBJECT")
@@ -87,7 +88,7 @@ def fix_called_as_a_tool_finds_issues_itself():
     fresh()
     cube("SM_A")
     with temporary_tools():
-        assert AgentTools.get_tool("_t_fix_all")() == "fixed 1 with limit 1"
+        assert dispatch.invoke("_t_fix_all") == "fixed 1 with limit 1"
 
 
 @test

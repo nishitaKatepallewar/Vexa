@@ -11,12 +11,11 @@ There are three kinds of tool:
   override them by name, and the tool spec exposes them to the LLM.
 * fixes (`AgentTools.register_fix`): safe one-click repairs for one check's issues.
 
-When a check or fix is called as a tool (a quick action or by the LLM) it runs on the
-selected meshes and returns a readable summary, like any other tool.
+The registry only stores functions and their metadata. It never runs anything:
+core/dispatch.py runs a tool by name, and core/runner.py runs checks for presets.
 """
 
 import atexit
-import functools
 import inspect
 import typing
 from dataclasses import dataclass, field
@@ -56,17 +55,11 @@ class ToolSpec:
 
 @dataclass
 class RegisteredTool:
-    """A registered tool with its function and metadata.
-
-    func: what quick actions and the LLM call. For checks and fixes this is a wrapper
-          that runs on the selection and returns a summary string.
-    impl: for checks and fixes, the underlying function the runner calls directly.
-    """
+    """A registered tool: the decorated function, unchanged, and its metadata."""
 
     name: str
     func: Callable
     metadata: ToolMetadata = field(default_factory=ToolMetadata)
-    impl: Optional[Callable] = None
 
 
 class AgentTools:
@@ -129,16 +122,8 @@ class AgentTools:
         """
 
         def decorator(func: Callable) -> Callable:
-            name = func.__name__
-
-            @functools.wraps(func)
-            def as_tool(**settings) -> str:
-                from .runner import run_check_as_tool
-
-                return run_check_as_tool(name, settings)
-
-            cls._add(as_tool, ToolMetadata(
-                display_name=display_name or _title(name),
+            cls._add(func, ToolMetadata(
+                display_name=display_name or _title(func.__name__),
                 is_quick_action=is_quick_action,
                 category=category,
                 description=inspect.getdoc(func) or "No description provided.",
@@ -146,7 +131,7 @@ class AgentTools:
                 why=why,
                 default_severity=severity.upper(),
                 pass_text=pass_text,
-            ), impl=func)
+            ))
             return func
 
         return decorator
@@ -169,37 +154,25 @@ class AgentTools:
             check = cls._tools.get(check_name)
             if check is None or check.metadata.kind != "check":
                 raise ValueError(f"register_fix: '{check_name}' is not a registered check")
-            name = func.__name__
-
-            def as_tool() -> str:
-                from .runner import run_fix_as_tool
-
-                return run_fix_as_tool(name)
-
-            # The tool takes no arguments (it finds the issues itself), so it gets its
-            # own name and docstring rather than the fix's signature.
-            as_tool.__name__ = name
-            as_tool.__doc__ = inspect.getdoc(func)
-
-            cls._add(as_tool, ToolMetadata(
-                display_name=display_name or _title(name),
+            cls._add(func, ToolMetadata(
+                display_name=display_name or _title(func.__name__),
                 is_quick_action=is_quick_action,
                 category=category or check.metadata.category,
                 description=inspect.getdoc(func) or "No description provided.",
                 kind="fix",
                 check_name=check_name,
-            ), impl=func)
-            check.metadata.fix_name = name
+            ))
+            check.metadata.fix_name = func.__name__
             return func
 
         return decorator
 
     @classmethod
-    def _add(cls, func: Callable, metadata: ToolMetadata, impl: Optional[Callable] = None) -> None:
+    def _add(cls, func: Callable, metadata: ToolMetadata) -> None:
         name = func.__name__
         # Re-registering (e.g. a module reloaded) replaces the old entry.
         cls._tools.pop(name, None)
-        cls._tools[name] = RegisteredTool(name=name, func=func, metadata=metadata, impl=impl)
+        cls._tools[name] = RegisteredTool(name=name, func=func, metadata=metadata)
 
     @classmethod
     def clear(cls) -> None:
@@ -237,7 +210,7 @@ class AgentTools:
     @classmethod
     def tool_specs(cls) -> List[ToolSpec]:
         """Provider-neutral specs for every registered tool, in registration order."""
-        return [_spec(tool.func) for tool in cls._tools.values()]
+        return [_spec(tool) for tool in cls._tools.values()]
 
     @classmethod
     def get_categories(cls) -> List[str]:
@@ -259,15 +232,18 @@ class AgentTools:
 _JSON_TYPES = {int: "integer", float: "number", bool: "boolean"}
 
 
-def _spec(func: Callable) -> ToolSpec:
-    """Builds a ToolSpec from a function's signature and docstring.
+def _spec(tool: RegisteredTool) -> ToolSpec:
+    """Builds a ToolSpec from a tool's signature and docstring.
 
     Parameters without a default are required. Annotations map to JSON Schema
-    types: int, float, bool and list; anything else is a string.
+    types: int, float, bool and list; anything else is a string. A fix is offered
+    without parameters: when called by name it finds its check's issues itself.
     """
+    func = tool.func
+    params = {} if tool.metadata.kind == "fix" else inspect.signature(func).parameters
     properties: Dict[str, Any] = {}
     required: List[str] = []
-    for name, param in inspect.signature(func).parameters.items():
+    for name, param in params.items():
         annotation = param.annotation
         if annotation is list or typing.get_origin(annotation) is list:
             prop = {"type": "array", "items": {"type": "string"}}

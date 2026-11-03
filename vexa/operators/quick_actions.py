@@ -34,9 +34,7 @@ class VexaQuickAction(bpy.types.Operator):
     )
 
     def execute(self, context: bpy.types.Context) -> set[str]:
-        func = AgentTools.get_tool(self.tool_name)
-
-        if not func:
+        if AgentTools.get_registered(self.tool_name) is None:
             self.report({"ERROR"}, f"Tool '{self.tool_name}' not found")
             return {"CANCELLED"}
 

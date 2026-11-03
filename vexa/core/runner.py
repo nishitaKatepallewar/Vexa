@@ -24,7 +24,7 @@ def check_settings(check_name: str, overrides: Optional[Dict] = None) -> Dict:
     reported instead of silently ignored.
     """
     check = AgentTools.get_check(check_name)
-    params = inspect.signature(check.impl).parameters
+    params = inspect.signature(check.func).parameters
     settings = {k: p.default for k, p in params.items() if p.default is not inspect.Parameter.empty}
     for key, value in (overrides or {}).items():
         if key not in params:
@@ -43,7 +43,7 @@ def run_check(check_name: str, overrides: Optional[Dict], scope: scope_mod.Check
     try:
         settings = check_settings(check_name, overrides)
         with scope_mod.using(scope):
-            issues: List[Issue] = check.impl(**settings) or []
+            issues: List[Issue] = check.func(**settings) or []
     except Exception as e:  # noqa: BLE001 - one broken check must never stop a run
         return CheckResult(check_name, meta.display_name, "ERROR", f"Check failed: {e}", why=meta.why)
     return CheckResult(
@@ -73,10 +73,10 @@ def apply_fix(result: CheckResult, overrides: Optional[Dict], scope: scope_mod.C
         return "Nothing to fix"
     fix = AgentTools.get_registered(check.metadata.fix_name)
     settings = check_settings(result.check_id, overrides)
-    accepted = inspect.signature(fix.impl).parameters
+    accepted = inspect.signature(fix.func).parameters
     kwargs = {k: v for k, v in settings.items() if k in accepted}
     with scope_mod.using(scope):
-        return fix.impl(result.issues, **kwargs)
+        return fix.func(result.issues, **kwargs)
 
 
 # ---------- checks and fixes called as tools (quick actions, Gemini) ----------
