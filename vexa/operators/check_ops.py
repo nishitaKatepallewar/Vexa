@@ -9,8 +9,10 @@ from ..core import runner
 from ..core.prefs import get_prefs
 from ..core.presets import get_preset, load_presets
 from ..core.registry import CHECK, AgentTools
+from ..core.results import plural
 from ..core.scope import build_scope
 from ..core.selection import select_result
+from .feedback import redraw_3d_views
 
 # The last run, kept in memory (not saved in the .blend). It holds names, never
 # references to Blender data (see the API docs, "Troubleshooting Errors & Crashes").
@@ -58,10 +60,7 @@ def sync_ui(context) -> None:
         item.fixable = result.fixable
         item.has_objects = bool(result.objects)
     wm.vexa_has_run = bool(STATE["preset_id"])
-    for window in wm.windows:
-        for area in window.screen.areas:
-            if area.type == "VIEW_3D":
-                area.tag_redraw()
+    redraw_3d_views(context)
 
 
 def rerun(context) -> None:
@@ -88,10 +87,6 @@ def fix_one(context, check_name: str) -> str:
     message = runner.apply_fix(result, preset.settings(check_name), scope)
     rerun(context)
     return message
-
-
-def _plural(n: int, word: str) -> str:
-    return f"{n} {word}" + ("" if n == 1 else "s")
 
 
 # ---------- operators ----------
@@ -124,7 +119,7 @@ class VEXA_OT_run_checks(bpy.types.Operator):
         sync_ui(context)
         errors = sum(1 for r in STATE["results"] if r.status == "ERROR")
         warnings = sum(1 for r in STATE["results"] if r.status == "WARNING")
-        self.report({"INFO"}, f"{preset.name}: {_plural(errors, 'error')}, {_plural(warnings, 'warning')}")
+        self.report({"INFO"}, f"{preset.name}: {plural(errors, 'error')}, {plural(warnings, 'warning')}")
         return {"FINISHED"}
 
 
@@ -145,7 +140,7 @@ class VEXA_OT_select_issues(bpy.types.Operator):
         count = select_result(result, context)
         if not count:
             return {"CANCELLED"}
-        self.report({"INFO"}, f"Selected {_plural(count, 'object')}")
+        self.report({"INFO"}, f"Selected {plural(count, 'object')}")
         return {"FINISHED"}
 
 

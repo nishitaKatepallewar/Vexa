@@ -1,25 +1,30 @@
-"""Generic quick action operator that executes any registered tool."""
+"""The Tools buttons: run any registered tool, check or fix by name."""
 
 import logging
+
 import bpy
 
 from ..core import dispatch
 from ..core.registry import AgentTools
+from .feedback import show_response
 
 logger = logging.getLogger(__name__)
 
+# The tool currently running, so its button can show a clock. Session state only:
+# it isn't saved in the .blend file.
+RUNNING = {"tool": ""}
+
 
 def _execute_tool_async(tool_name: str):
-    """Module-level function to run tool async."""
-    scene = bpy.context.scene
+    """Timer callback: runs the tool after the button has redrawn as busy."""
     try:
-        scene["vexa_last_response"] = dispatch.invoke(tool_name)
-    except Exception as e:
+        message = dispatch.invoke(tool_name)
+    except Exception as e:  # noqa: BLE001 - show any tool failure in the panel
         logger.error(f"Quick action error for {tool_name}: {e}")
-        scene["vexa_last_response"] = f"Error: {str(e)}"
+        message = f"Error: {e}"
     finally:
-        scene["vexa_is_loading"] = False
-        scene["vexa_loading_tool"] = ""
+        RUNNING["tool"] = ""
+    show_response(message)
 
 
 class VexaQuickAction(bpy.types.Operator):
@@ -38,10 +43,8 @@ class VexaQuickAction(bpy.types.Operator):
             self.report({"ERROR"}, f"Tool '{self.tool_name}' not found")
             return {"CANCELLED"}
 
-        scene = context.scene
-        scene["vexa_is_loading"] = True
-        scene["vexa_loading_tool"] = self.tool_name
-        scene["vexa_last_response"] = ""
+        RUNNING["tool"] = self.tool_name
+        show_response("", context)
 
         captured_name = self.tool_name
         bpy.app.timers.register(

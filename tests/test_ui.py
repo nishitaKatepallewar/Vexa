@@ -203,14 +203,14 @@ def run() -> int:
 
         GeminiClient.build_request = unreachable
         try:
-            scene.vexa_prompt = "find ngons"
+            wm.vexa_prompt = "find ngons"
             assert bpy.ops.vexa.execute_prompt() == {"FINISHED"}
             assert ep._pending["proc"] is not None
             deadline = time.time() + 20
             while ep._poll_request() is not None and time.time() < deadline:
                 time.sleep(0.2)
             assert ep._pending["proc"] is None
-            assert scene["vexa_last_response"].startswith("Error:"), scene["vexa_last_response"]
+            assert wm.vexa_last_response.startswith("Error:"), wm.vexa_last_response
         finally:
             GeminiClient.build_request = original
             get_prefs().api_key = ""
@@ -220,15 +220,28 @@ def run() -> int:
         bpy.ops.object.select_all(action="DESELECT")
         bpy.ops.mesh.primitive_cylinder_add(vertices=8, location=(10, 0, 0))
         _execute_tool_async("detect_ngons")
-        assert scene["vexa_last_response"].startswith("Detect N-gons: 2 n-gons"), scene["vexa_last_response"]
+        assert wm.vexa_last_response.startswith("Detect N-gons: 2 n-gons"), wm.vexa_last_response
         bpy.ops.object.mode_set(mode="OBJECT")
         _execute_tool_async("triangulate_ngons")
-        assert scene["vexa_last_response"] == "Triangulated 2 n-gons", scene["vexa_last_response"]
+        assert wm.vexa_last_response == "Triangulated 2 n-gons", wm.vexa_last_response
+
+    def tools_panel_expands_a_category():
+        assert bpy.ops.vexa.toggle_category(category="Geometry") == {"FINISHED"}
+        log = draw_panel(panel.VEXA_PT_tools)
+        assert ("label", "Detect N-gons") in log and ("label", "Detect Missing Textures") not in log, log
+        bpy.ops.vexa.toggle_category(category="Geometry")
+        assert ("label", "Detect N-gons") not in draw_panel(panel.VEXA_PT_tools)
+
+    def session_state_is_not_saved_in_the_blend():
+        saved = set(scene.keys())
+        for key in ("vexa_last_response", "vexa_prompt", "vexa_is_loading", "vexa_loading_tool", "vexa_is_thinking"):
+            assert key not in saved, saved
+        assert not any(k.endswith("_expanded") for k in saved), saved
 
     def ai_tool_call_runs_a_check():
         from vexa.operators.execute_prompt import _dispatch_tool
         _dispatch_tool("detect_over_triangle_budget", {"max_tris": 1})
-        assert scene["vexa_last_response"].startswith("Triangle budget:"), scene["vexa_last_response"]
+        assert wm.vexa_last_response.startswith("Triangle budget:"), wm.vexa_last_response
         names = {s.name for s in AgentTools.tool_specs()}
         assert {"detect_ngons", "detect_missing_lightmap_uvs", "triangulate_ngons", "select_hard_edges"} <= names
 
@@ -259,12 +272,14 @@ def run() -> int:
         ("AI request runs in a separate process", ai_request_runs_in_separate_process),
         ("quick action runs a check and its fix", quick_action_runs_a_check),
         ("AI tool call runs a check", ai_tool_call_runs_a_check),
+        ("Tools panel expands a category", tools_panel_expands_a_category),
+        ("session state is not saved in the .blend", session_state_is_not_saved_in_the_blend),
         ("disable and re-enable keeps every tool", reenable_keeps_tools),
         ("unregister cleanly", unregister_clean),
     ]:
         step(name, fn)
 
-    print(f"\n{17 - len(failures)}/17 UI tests passed on Blender {bpy.app.version_string}")
+    print(f"\n{19 - len(failures)}/19 UI tests passed on Blender {bpy.app.version_string}")
     return len(failures)
 
 

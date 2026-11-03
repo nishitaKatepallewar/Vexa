@@ -90,13 +90,6 @@ def _register() -> None:
     props.register_props()
     check_ops.reload_presets()
 
-    bpy.types.Scene.vexa_prompt = bpy.props.StringProperty(
-        name="Prompt", description="Instruction for Vexa", default=""
-    )
-    bpy.types.Scene.vexa_last_response = bpy.props.StringProperty(
-        name="Response", description="Feedback from Vexa", default=""
-    )
-
 
 def _unregister() -> None:
     """Unregisters the add-on classes and properties."""
@@ -104,13 +97,6 @@ def _unregister() -> None:
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
 
-    for name in ("vexa_prompt", "vexa_last_response"):
-        if hasattr(bpy.types.Scene, name):
-            delattr(bpy.types.Scene, name)
-
-    from .ui.panel import _reset_tool_cache
-
-    _reset_tool_cache()
     check_ops.STATE.update(preset_id="", scope="", results=[])
 
     AgentTools.clear()

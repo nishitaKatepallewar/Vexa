@@ -89,6 +89,11 @@ def summarize(issues: List[Issue], pass_text: str = "OK") -> str:
     return f"{len(issues)} issues"
 
 
+def plural(n: int, word: str) -> str:
+    """'1 error', '2 errors'."""
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
 def overall_status(results: List[CheckResult]) -> str:
     worst = PASS
     for r in results:

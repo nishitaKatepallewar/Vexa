@@ -12,6 +12,7 @@ from ..core import dispatch
 from ..core.llm import WORKER_SCRIPT, create_client
 from ..core.prefs import get_prefs
 from ..core.registry import AgentTools
+from .feedback import show_response
 
 # The network request runs in a separate process (core/llm/worker.py) so Blender's UI
 # never freezes. Blender's API docs advise against Python threads that outlive the
@@ -21,28 +22,15 @@ _pending = {"proc": None, "client": None, "out": ""}
 _POLL_SECONDS = 0.2
 
 
-def _redraw_panels() -> None:
-    wm = bpy.context.window_manager
-    for window in wm.windows:
-        for area in window.screen.areas:
-            if area.type == "VIEW_3D":
-                area.tag_redraw()
-
-
-def _set_response(text: str) -> None:
-    bpy.context.scene["vexa_last_response"] = text
-    _redraw_panels()
-
-
 def _dispatch_tool(func_name: str, args: dict) -> None:
     try:
-        _set_response(dispatch.invoke(func_name, args))
+        show_response(dispatch.invoke(func_name, args))
     except dispatch.UnknownToolError as e:
-        _set_response(str(e))
+        show_response(str(e))
     except TypeError as e:
-        _set_response(f"Argument Error: {e}")
+        show_response(f"Argument Error: {e}")
     except Exception as e:  # noqa: BLE001 - surface any tool failure in the panel
-        _set_response(f"Execution Error: {e}")
+        show_response(f"Execution Error: {e}")
 
 
 def _poll_request():
@@ -55,7 +43,6 @@ def _poll_request():
 
     client, out_path = _pending["client"], _pending["out"]
     _pending.update(proc=None, client=None, out="")
-    bpy.context.scene["vexa_is_thinking"] = False
     try:
         with open(out_path, "r", encoding="utf-8") as f:
             response = json.load(f) or {"error": "No response."}
@@ -68,14 +55,14 @@ def _poll_request():
             pass
 
     if "error" in response:
-        _set_response(f"Error: {response['error']}")
+        show_response(f"Error: {response['error']}")
         return None
 
     reply = client.parse_response(response)
     if reply.tool_call:
         _dispatch_tool(reply.tool_call.name, reply.tool_call.args)
     else:
-        _set_response(reply.text or "No understandable response.")
+        show_response(reply.text or "No understandable response.")
     return None
 
 
@@ -90,8 +77,7 @@ class VexaExecutePromptOperator(bpy.types.Operator):
         return _pending["proc"] is None
 
     def execute(self, context: bpy.types.Context) -> set[str]:
-        scene = context.scene
-        prompt = scene.vexa_prompt.strip()
+        prompt = context.window_manager.vexa_prompt.strip()
         prefs = get_prefs(context)
         api_key = prefs.api_key.strip() if prefs else ""
 
@@ -120,7 +106,6 @@ class VexaExecutePromptOperator(bpy.types.Operator):
             return {"CANCELLED"}
 
         _pending.update(proc=proc, client=client, out=out_path)
-        scene["vexa_is_thinking"] = True
-        scene["vexa_last_response"] = "Thinking…"
+        show_response("Thinking…", context)
         bpy.app.timers.register(_poll_request, first_interval=_POLL_SECONDS)
         return {"FINISHED"}
