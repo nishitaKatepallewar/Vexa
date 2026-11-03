@@ -9,6 +9,7 @@ MODULES = (
     "transform_tools",
     "uv_tools",
     "texture_tools",
+    "naming_tools",
 )
 
 
