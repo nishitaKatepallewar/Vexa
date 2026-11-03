@@ -10,6 +10,7 @@ MODULES = (
     "uv_tools",
     "texture_tools",
     "naming_tools",
+    "collision_tools",
 )
 
 
