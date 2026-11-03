@@ -17,7 +17,8 @@ core/registry.py        AgentTools: name → function + metadata. Pure data.
         │       ├── operators/quick_actions.py   Tools buttons             (direct path)
         │       └── operators/execute_prompt.py  Ask Vexa, via core/llm/   (inference path)
         │
-        └── core/runner.py       run a preset's checks, apply fixes, write reports
+        └── core/runner.py       run a preset's checks, apply fixes
+                ├── core/report.py   save a run as a report
                 └── operators/check_ops.py + ui/panel.py   Check Assets panel (preset path)
 ```
 
@@ -44,13 +45,14 @@ vexa/
   core/
     registry.py     AgentTools: every tool, check and fix, and their LLM tool specs
     dispatch.py     invoke(name, args): the one way to run something by name
-    runner.py       runs checks with preset settings, applies fixes, writes reports
+    runner.py       runs checks with preset settings, applies fixes
+    report.py       turns a run into a report and saves it
     results.py      Issue and CheckResult: what every check returns
     scope.py        which meshes a check looks at (selection, or the runner's scope)
     selection.py    selects the objects and faces a check flagged
     presets.py      loads preset .json files
     props.py        Blender properties: per-file (scene) and per-session (window manager)
-    prefs.py        reads the add-on preferences
+    prefs.py        reads the add-on preferences and version
     llm/            LLM providers: base.py (interface), gemini.py, worker.py (HTTP in a subprocess)
   tools/            every tool, check and fix, one module per area
   presets/          built-in targets: general, unity_asset_store, fab, unreal
@@ -97,7 +99,9 @@ Each entry is a `RegisteredTool` with `name`, `func`, `kind`, `display_name`,
 | Collision | `collision_tools.py` | `detect_invalid_collision_meshes` | – |
 | Rigging | `rigging_tools.py` | `detect_excess_bone_influences` | – |
 
-Naming: checks start with `detect_`; tools and fixes start with a verb.
+Naming: check functions start with `detect_` and their labels with "Detect "
+("Detect N-gons"); results and reports show the label without it ("N-gons").
+Tools and fixes start with a verb.
 
 ## Adding a tool
 
@@ -190,6 +194,15 @@ A preset is a JSON file choosing checks, severities and settings:
 Built-in presets live in `vexa/presets/`. Teams can point **Preferences → Team
 presets folder** at a shared folder of their own. An unknown setting name is
 reported as an error rather than ignored.
+
+## Reports
+
+Export Report (the export button under the results) saves the last check. A `.html`
+file is the report people read: `vexa/templates/report.html` with the report data
+embedded, self-contained and offline-friendly. A `.json` file is the same data for
+scripts and pipelines. The template is plain HTML, CSS and JavaScript; edit it like
+any web page. `core/report.py` only inserts the data, escaped so object names can't
+break the page.
 
 ## State
 

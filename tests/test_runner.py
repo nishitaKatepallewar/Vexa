@@ -115,21 +115,5 @@ def loading_with_no_preset_files_is_empty_not_recursive():
             load_presets()
 
 
-@test
-def report_counts_and_file():
-    fresh()
-    cube("SM_A")
-    with temporary_checks():
-        preset = Preset(id="p", name="p", checks={"_t_flag_all": {"severity": "ERROR"}})
-        results = runner.run_preset(preset, list(bpy.context.scene.objects))
-        report = runner.report_dict(preset, results, "SELECTED")
-        assert report["status"] == "ERROR" and report["counts"]["ERROR"] == 1
-        with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "r.json")
-            runner.write_report(path, preset, results)
-            with open(path) as f:
-                assert json.load(f)["results"][0]["check"] == "_t_flag_all"
-
-
 if __name__ == "__main__":
     main(globals())

@@ -30,7 +30,7 @@ def _is_convex(obj, tol: float = 1e-4) -> bool:
 
 
 @AgentTools.register_check(
-    display_name="Collision meshes",
+    display_name="Detect Invalid Collision Meshes",
     category="Collision",
     why="Unreal only imports custom collision named UCX_<MeshName>_NN, and it must be "
         "convex. Anything else is silently ignored or replaced.",

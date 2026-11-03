@@ -155,12 +155,20 @@ def run() -> int:
         assert "detect_default_names" in {r.check_id for r in STATE["results"]}
 
     def export_report():
+        import json
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "vexa_report.json")
-            assert bpy.ops.vexa.export_report(filepath=path) == {"FINISHED"}
-            import json
-            data = json.load(open(path))
+            assert bpy.ops.vexa.export_report(filepath=path, open_after=False) == {"FINISHED"}
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
             assert data["preset"]["id"] == "unity_asset_store" and data["results"]
+            html = os.path.join(d, "vexa_report.html")
+            assert bpy.ops.vexa.export_report(filepath=html, open_after=False) == {"FINISHED"}
+            with open(html, encoding="utf-8") as f:
+                assert f.read().startswith("<!doctype html>")
+            no_ext = os.path.join(d, "report")
+            assert bpy.ops.vexa.export_report(filepath=no_ext, open_after=False) == {"FINISHED"}
+            assert os.path.exists(no_ext + ".html")
 
     def team_presets_folder():
         from vexa.core.prefs import get_prefs
@@ -220,7 +228,7 @@ def run() -> int:
         bpy.ops.object.select_all(action="DESELECT")
         bpy.ops.mesh.primitive_cylinder_add(vertices=8, location=(10, 0, 0))
         _execute_tool_async("detect_ngons")
-        assert wm.vexa_last_response.startswith("Detect N-gons: 2 n-gons"), wm.vexa_last_response
+        assert wm.vexa_last_response.startswith("N-gons: 2 n-gons"), wm.vexa_last_response
         bpy.ops.object.mode_set(mode="OBJECT")
         _execute_tool_async("triangulate_ngons")
         assert wm.vexa_last_response == "Triangulated 2 n-gons", wm.vexa_last_response
@@ -241,7 +249,7 @@ def run() -> int:
     def ai_tool_call_runs_a_check():
         from vexa.operators.execute_prompt import _dispatch_tool
         _dispatch_tool("detect_over_triangle_budget", {"max_tris": 1})
-        assert wm.vexa_last_response.startswith("Triangle budget:"), wm.vexa_last_response
+        assert wm.vexa_last_response.startswith("Over Triangle Budget:"), wm.vexa_last_response
         names = {s.name for s in AgentTools.tool_specs()}
         assert {"detect_ngons", "detect_missing_lightmap_uvs", "triangulate_ngons", "select_hard_edges"} <= names
 
@@ -265,7 +273,7 @@ def run() -> int:
         ("fix one check", fix_one),
         ("fix all safe issues", fix_all),
         ("toggle a check off and on", toggle_check),
-        ("export JSON report", export_report),
+        ("export HTML and JSON reports", export_report),
         ("team presets folder", team_presets_folder),
         ("preferences draw", preferences_draw),
         ("AI panel hidden without key", ai_panel_hidden_without_key),

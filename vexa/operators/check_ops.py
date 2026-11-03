@@ -1,11 +1,13 @@
 """Operators behind the check panel: run, select, fix, explain, toggle, report."""
 
+import os
+import pathlib
 import textwrap
 
 import bpy
 from bpy_extras.io_utils import ExportHelper
 
-from ..core import runner
+from ..core import report, runner
 from ..core.prefs import get_prefs
 from ..core.presets import get_preset, load_presets
 from ..core.registry import CHECK, AgentTools
@@ -237,22 +239,39 @@ class VEXA_OT_toggle_check(bpy.types.Operator):
 
 
 class VEXA_OT_export_report(bpy.types.Operator, ExportHelper):
-    """Save the last check as a JSON report"""
+    """Save the last check as a report: an HTML page to read and share, or JSON data"""
 
     bl_idname = "vexa.export_report"
     bl_label = "Export Report"
 
-    filename_ext = ".json"
-    filter_glob: bpy.props.StringProperty(default="*.json", options={"HIDDEN"})
+    filename_ext = ".html"
+    check_extension = False  # keep .json if the user types it
+    filter_glob: bpy.props.StringProperty(default="*.html;*.json", options={"HIDDEN"})
+    open_after: bpy.props.BoolProperty(
+        name="Open after saving",
+        description="Open the HTML report in your web browser",
+        default=True,
+    )
 
     @classmethod
     def poll(cls, context):
         return bool(STATE["results"])
 
+    def invoke(self, context, event):
+        if not self.filepath:  # next to the .blend file, like Blender's own exporters
+            stem = os.path.splitext(bpy.data.filepath)[0] if bpy.data.filepath else "untitled"
+            self.filepath = f"{stem}_vexa_report{self.filename_ext}"
+        return super().invoke(context, event)
+
     def execute(self, context):
+        path = self.filepath
+        if not path.lower().endswith((".html", ".htm", ".json")):
+            path += self.filename_ext
         preset = get_preset(STATE["preset_id"])
-        runner.write_report(self.filepath, preset, STATE["results"], STATE["scope"])
-        self.report({"INFO"}, f"Report saved: {self.filepath}")
+        report.write_report(path, preset, STATE["results"], STATE["scope"])
+        self.report({"INFO"}, f"Report saved: {path}")
+        if self.open_after and path.lower().endswith((".html", ".htm")):
+            bpy.ops.wm.url_open(url=pathlib.Path(path).resolve().as_uri())
         return {"FINISHED"}
 
 

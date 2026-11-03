@@ -16,7 +16,7 @@ DEFAULT_NAME = re.compile(
 # ---------- default names ----------
 
 @AgentTools.register_check(
-    display_name="Default object names",
+    display_name="Detect Default Names",
     category="Naming",
     why="Names like Cube.003 become asset names in engine. Reviewers and teammates "
         "can't tell what anything is.",
@@ -31,7 +31,7 @@ def detect_default_names() -> list:
 # ---------- allowed characters ----------
 
 @AgentTools.register_check(
-    display_name="Allowed name characters",
+    display_name="Detect Invalid Name Characters",
     category="Naming",
     why="Some marketplaces and pipelines only accept letters, digits and underscores. "
         "Spaces, dots and accents break paths and get submissions rejected.",
@@ -91,7 +91,7 @@ def fix_invalid_names(issues) -> str:
 # ---------- required prefix ----------
 
 @AgentTools.register_check(
-    display_name="Asset name prefix",
+    display_name="Detect Missing Name Prefix",
     category="Naming",
     why="Studios and Unreal's style guide use prefixes like SM_ for static meshes so "
         "assets sort and filter correctly in the content browser.",

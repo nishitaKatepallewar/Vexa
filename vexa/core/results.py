@@ -69,6 +69,7 @@ class CheckResult:
             "title": self.title,
             "status": self.status,
             "summary": self.summary,
+            "why": self.why,
             "fixable": self.fixable,
             "issues": [i.to_dict() for i in self.issues],
         }
@@ -87,6 +88,15 @@ def summarize(issues: List[Issue], pass_text: str = "OK") -> str:
     if len(objects) > 1:
         return f"{len(issues)} issues on {len(objects)} objects"
     return f"{len(issues)} issues"
+
+
+def problem_title(label: str) -> str:
+    """How a check is named in results: its label without "Detect ".
+
+    Check labels read as actions on buttons ("Detect N-gons"); results list the
+    problem itself ("N-gons").
+    """
+    return label[len("Detect "):] if label.startswith("Detect ") else label
 
 
 def plural(n: int, word: str) -> str:

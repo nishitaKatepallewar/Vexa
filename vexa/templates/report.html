@@ -1,0 +1,172 @@
+<!doctype html>
+<!-- Vexa QC report. Rendered by vexa/core/report.py, which replaces the
+     VEXA_REPORT_JSON placeholder below with the report data. Self-contained:
+     works offline (fonts fall back to system fonts). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vexa QC Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap">
+<style>
+/* Layout: one column. The verdict, one line of context, then a single list of
+   what to fix, worst first. Passed checks collapse to one line at the end. */
+:root {
+  --bg: #181b1e;
+  --line: rgba(255,255,255,0.08);
+  --text: #e8edf2;
+  --muted: rgba(232,237,242,0.55);
+  --accent: #ea7600;
+  --error: #ff5d52;
+  --warning: #f2b632;
+  --info: #3a8eff;
+  --pass: #4fcf8d;
+  --display: "Syne", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --mono: "DM Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6 var(--mono); }
+.wrap {
+  max-width: 880px; margin: 0 auto;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 64px;
+  display: grid; gap: 36px;
+}
+.logo { font-family: var(--display); font-weight: 800; font-size: 16px; letter-spacing: 0.12em; }
+.logo span { color: var(--accent); }
+
+.verdict h1 {
+  font-family: var(--display); font-weight: 800; text-transform: uppercase;
+  font-size: clamp(36px, 7vw, 64px); line-height: 1; letter-spacing: -0.02em; margin: 0 0 12px;
+}
+.ERROR { color: var(--error); } .WARNING { color: var(--warning); } .PASS, .INFO { color: var(--pass); }
+.context { color: var(--muted); margin: 0; }
+.tally { margin: 6px 0 0; }
+.tally span + span::before { content: " · "; color: var(--muted); }
+.tally .INFO { color: var(--info); }
+
+.list { border-top: 1px solid var(--line); }
+.item {
+  display: grid; grid-template-columns: 10px minmax(0, 1fr) minmax(0, auto);
+  gap: 6px 14px; align-items: baseline;
+  padding: 14px 0; border-bottom: 1px solid var(--line);
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; align-self: center; }
+.d-ERROR { background: var(--error); } .d-WARNING { background: var(--warning); } .d-INFO { background: var(--info); }
+.what { font-family: var(--display); font-weight: 700; font-size: 16px; min-width: 0; }
+.where { color: var(--muted); grid-column: 2; min-width: 0; overflow-wrap: anywhere; }
+.where b { color: var(--text); font-weight: 500; }
+.detail { color: var(--muted); text-align: right; grid-row: 1; grid-column: 3; overflow-wrap: anywhere; }
+
+.passed { color: var(--muted); margin: 0; }
+.passed b { color: var(--pass); font-weight: 500; }
+footer { color: var(--muted); font-size: 12px; }
+footer a { color: var(--muted); }
+
+@media (max-width: 600px) {
+  .item { grid-template-columns: 10px minmax(0, 1fr); }
+  .detail { grid-row: auto; grid-column: 2; text-align: left; }
+}
+@media print {
+  body { background: #fff; color: #111; }
+  .context, .where, .detail, .passed, footer { color: #555; }
+  .list, .item { border-color: #ddd; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">VEX<span>A</span></div>
+
+  <header class="verdict">
+    <h1 id="verdict"></h1>
+    <p class="context" id="context"></p>
+    <p class="tally" id="tally"></p>
+  </header>
+
+  <main id="list" class="list"></main>
+
+  <p class="passed" id="passed"></p>
+
+  <footer>Made with Vexa · <a href="https://getvexa.me" rel="noopener">getvexa.me</a></footer>
+</div>
+
+<script id="vexa-report" type="application/json">/*VEXA_REPORT_JSON*/</script>
+<script>
+(function () {
+  "use strict";
+  var R = JSON.parse(document.getElementById("vexa-report").textContent);
+  var ORDER = { ERROR: 0, WARNING: 1, INFO: 2 };
+  var VERDICT = { ERROR: "Not ready", WARNING: "Ready, with warnings", INFO: "Ready", PASS: "Ready" };
+  var WORD = { ERROR: "error", WARNING: "warning", INFO: "note" };
+
+  function node(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function plural(n, w) { return n + " " + w + (n === 1 ? "" : "s"); }
+  var file = String(R.file || "").split(/[\\/]/).pop() || "Unsaved file";
+  var date = new Date(R.created);
+  var when = isNaN(date) ? "" : date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
+  var status = R.status || "PASS";
+  var h1 = document.getElementById("verdict");
+  h1.textContent = VERDICT[status];
+  h1.className = status;
+  document.getElementById("context").textContent =
+    [(R.preset || {}).name, file, when].filter(Boolean).join(" · ");
+
+  var c = R.counts || {};
+  var tally = document.getElementById("tally");
+  [["ERROR", "error"], ["WARNING", "warning"], ["INFO", "note"], ["PASS", "passed"]].forEach(function (p) {
+    var n = c[p[0]] || 0;
+    if (!n) return;
+    tally.appendChild(node("span", p[0], p[0] === "PASS" ? n + " passed" : plural(n, p[1])));
+  });
+
+  var problems = (R.results || []).filter(function (r) { return r.status !== "PASS"; })
+    .sort(function (a, b) { return ORDER[a.status] - ORDER[b.status]; });
+  var list = document.getElementById("list");
+  problems.forEach(function (r) {
+    var issues = r.issues || [];
+    var names = issues.map(function (i) { return i.object_name; }).filter(Boolean);
+    var item = node("div", "item");
+    item.title = r.why || "";
+    var dot = node("span", "dot d-" + r.status);
+    dot.setAttribute("aria-label", WORD[r.status]);
+    item.appendChild(dot);
+    item.appendChild(node("div", "what", r.title));
+    var where = node("div", "where");
+    if (names.length) {
+      names.forEach(function (n, k) {
+        if (k) where.appendChild(document.createTextNode(", "));
+        where.appendChild(node("b", null, n));
+      });
+    } else {
+      where.textContent = "Scene settings";
+    }
+    item.appendChild(where);
+    var single = issues.length === 1 ? issues[0] : null;
+    var detail = single ? [single.value, single.target].filter(Boolean).join(" → ") : "";
+    item.appendChild(node("div", "detail", detail));
+    list.appendChild(item);
+  });
+  if (!problems.length) list.hidden = true;
+
+  var passed = (R.results || []).filter(function (r) { return r.status === "PASS"; });
+  var p = document.getElementById("passed");
+  if (passed.length) {
+    p.appendChild(node("b", null, "No issues: "));
+    p.appendChild(document.createTextNode(passed.map(function (r) { return r.title; }).join(", ")));
+  }
+  document.title = "Vexa · " + file;
+})();
+</script>
+</body>
+</html>

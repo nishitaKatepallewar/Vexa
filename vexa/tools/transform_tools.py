@@ -30,7 +30,7 @@ def _unapplied(obj, check_rotation: bool) -> list:
 # ---------- transforms applied ----------
 
 @AgentTools.register_check(
-    display_name="Transforms applied",
+    display_name="Detect Unapplied Transforms",
     category="Transforms",
     why="Unapplied scale or rotation is the most common reason assets import at the "
         "wrong size or rotated 90° in Unity and Unreal.",
@@ -86,7 +86,7 @@ def apply_transforms(issues, check_rotation: bool = True) -> str:
 # ---------- negative scale ----------
 
 @AgentTools.register_check(
-    display_name="Negative scale",
+    display_name="Detect Negative Scale",
     category="Transforms",
     why="Mirroring with negative scale flips normals in engine, so faces turn invisible "
         "or inside-out and normal maps light the wrong way.",
@@ -120,7 +120,7 @@ def _bottom_center(obj):
 
 
 @AgentTools.register_check(
-    display_name="Pivot at bottom centre",
+    display_name="Detect Off-Center Pivots",
     category="Transforms",
     why="Marketplaces expect props to sit on the ground when dropped into a scene. "
         "A pivot off the bottom centre makes every placement need manual nudging.",
@@ -171,7 +171,7 @@ def move_pivots_to_bottom_center(issues) -> str:
 # ---------- unit scale ----------
 
 @AgentTools.register_check(
-    display_name="Scene unit scale",
+    display_name="Detect Wrong Unit Scale",
     category="Transforms",
     why="If the scene's unit scale doesn't match what the engine expects, everything "
         "exported from this file imports at the wrong size.",

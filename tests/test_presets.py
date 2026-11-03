@@ -11,7 +11,7 @@ import tempfile  # noqa: E402
 
 import bpy  # noqa: E402
 
-from vexa.core import runner  # noqa: E402
+from vexa.core import report, runner  # noqa: E402
 from vexa.core.presets import load_presets  # noqa: E402
 from vexa.core.registry import AgentTools  # noqa: E402
 from helpers import cube, fresh, main, test  # noqa: E402
@@ -32,7 +32,7 @@ def every_builtin_preset_runs():
         assert all(not r.summary.startswith("Check failed") for r in results), [r.summary for r in results]
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "report.json")
-        runner.write_report(path, presets[0], results)
+        report.write_report(path, presets[0], results)
         assert os.path.getsize(path) > 100
 
 if __name__ == "__main__":
