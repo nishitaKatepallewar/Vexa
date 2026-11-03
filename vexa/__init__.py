@@ -85,8 +85,7 @@ def _unregister() -> None:
 
     _reset_tool_cache()
 
-    AgentTools._tools.clear()
-    AgentTools._schemas.clear()
+    AgentTools.clear()
 
 
 def register() -> None:
