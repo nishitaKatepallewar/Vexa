@@ -54,10 +54,10 @@ class FakeLayout:
         object.__setattr__(self, name, value)
 
 
-def draw_panel(cls):
+def draw_panel(cls, method="draw"):
     log = []
     fake = type("P", (), {"layout": FakeLayout(log)})()
-    cls.draw(fake, bpy.context)
+    getattr(cls, method)(fake, bpy.context)
     return log
 
 
@@ -108,6 +108,8 @@ def run() -> int:
     def panel_before_run():
         log = draw_panel(panel.VexaMainPanel)
         assert ("operator", "vexa.run_checks") in log
+        assert not any(kind == "label" and "Check Assets" in text for kind, text in log), log  # no hint box
+        assert not panel.VEXA_PT_results.poll(bpy.context)  # results section appears after a check
 
     def run_checks():
         scene.vexa_preset = "unity_asset_store"
@@ -119,8 +121,12 @@ def run() -> int:
         assert statuses["detect_default_names"] == "WARNING", statuses
 
     def panels_after_run():
-        log = draw_panel(panel.VexaMainPanel)
-        assert ("template_list", "VEXA_UL_results") in log
+        assert panel.VEXA_PT_results.poll(bpy.context)
+        header = draw_panel(panel.VEXA_PT_results, "draw_header")
+        assert any(kind == "label" and text.startswith("Not ready · 1 error") for kind, text in header), header
+        log = draw_panel(panel.VEXA_PT_results)
+        assert ("template_list", "VEXA_UL_results") in log and ("operator", "vexa.fix_all") in log
+        assert ("template_list", "VEXA_UL_results") not in draw_panel(panel.VexaMainPanel)
         draw_panel(panel.VEXA_PT_preset_checks)
         draw_panel(panel.VEXA_PT_tools)
         # UIList rows
@@ -257,8 +263,7 @@ def run() -> int:
         vexa.unregister()
         vexa.register()
         assert AgentTools.get("detect_ngons", kind="check") and AgentTools.get("select_hard_edges")
-        log = draw_panel(panel.VexaMainPanel)  # no stale results after re-enabling
-        assert ("template_list", "VEXA_UL_results") not in log
+        assert not panel.VEXA_PT_results.poll(bpy.context)  # no stale results after re-enabling
 
     def unregister_clean():
         vexa.unregister()
