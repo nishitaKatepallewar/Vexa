@@ -32,7 +32,7 @@ def check_runs_on_the_selection_and_summarizes():
     fresh()
     cube("SM_A").select_set(True)
     text = dispatch.invoke("detect_over_triangle_budget", {"max_tris": 1})
-    assert text.startswith("Triangle budget:") and "SM_A" in text, text
+    assert text.startswith("Over Triangle Budget:") and "SM_A" in text, text
 
 
 @test

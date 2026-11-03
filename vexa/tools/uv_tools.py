@@ -8,7 +8,7 @@ from ..core.scope import current
 
 
 @AgentTools.register_check(
-    display_name="UV map present",
+    display_name="Detect Missing UV Maps",
     category="UVs",
     why="A mesh with no UV map can't be textured or lightmapped, and most engines "
         "warn or fail on import.",
@@ -22,7 +22,7 @@ def detect_missing_uv_maps() -> list:
 
 
 @AgentTools.register_check(
-    display_name="Lightmap UV channel",
+    display_name="Detect Lightmap UV Issues",
     category="UVs",
     why="Unreal bakes lighting from the second UV channel. If it's missing or spills "
         "outside 0–1, lighting builds fail or bake black and blotchy.",

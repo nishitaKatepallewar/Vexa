@@ -6,7 +6,7 @@ from ..core.scope import current
 
 
 @AgentTools.register_check(
-    display_name="Bone influences per vertex",
+    display_name="Detect Excess Bone Influences",
     category="Rigging",
     why="Engines cap how many bones can move one vertex (Unity 4 by default, Unreal 8). "
         "Extra weights are dropped on import and deformation changes.",

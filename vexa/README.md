@@ -99,7 +99,9 @@ Each entry is a `RegisteredTool` with `name`, `func`, `kind`, `display_name`,
 | Collision | `collision_tools.py` | `detect_invalid_collision_meshes` | – |
 | Rigging | `rigging_tools.py` | `detect_excess_bone_influences` | – |
 
-Naming: checks start with `detect_`; tools and fixes start with a verb.
+Naming: check functions start with `detect_` and their labels with "Detect "
+("Detect N-gons"); results and reports show the label without it ("N-gons").
+Tools and fixes start with a verb.
 
 ## Adding a tool
 

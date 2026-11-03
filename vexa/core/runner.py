@@ -10,7 +10,7 @@ from typing import Dict, Iterable, List, Optional, Set
 from . import scope as scope_mod
 from .presets import Preset
 from .registry import CHECK, AgentTools
-from .results import PASS, CheckResult, Issue, summarize
+from .results import PASS, CheckResult, Issue, problem_title, summarize
 
 
 def check_settings(check_name: str, overrides: Optional[Dict] = None) -> Dict:
@@ -40,10 +40,11 @@ def run_check(check_name: str, overrides: Optional[Dict], scope: scope_mod.Check
         with scope_mod.using(scope):
             issues: List[Issue] = check.func(**settings) or []
     except Exception as e:  # noqa: BLE001 - one broken check must never stop a run
-        return CheckResult(check_name, check.display_name, "ERROR", f"Check failed: {e}", why=check.check.why)
+        return CheckResult(check_name, problem_title(check.display_name), "ERROR", f"Check failed: {e}",
+                           why=check.check.why)
     return CheckResult(
         check_id=check_name,
-        title=check.display_name,
+        title=problem_title(check.display_name),
         status=(severity or check.check.severity) if issues else PASS,
         summary=summarize(issues, check.check.pass_text),
         why=check.check.why,

@@ -177,7 +177,7 @@ def detect_intersecting_meshes() -> list:
 # ---------- triangle budget ----------
 
 @AgentTools.register_check(
-    display_name="Triangle budget",
+    display_name="Detect Over Triangle Budget",
     category="Geometry",
     why="Every platform has a performance budget. Going over it can get an asset "
         "rejected or force an artist to redo LODs late.",

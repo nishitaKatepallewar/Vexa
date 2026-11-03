@@ -167,7 +167,7 @@ def fix_color_spaces(issues) -> str:
 # ---------- texture size ----------
 
 @AgentTools.register_check(
-    display_name="Texture sizes",
+    display_name="Detect Invalid Texture Sizes",
     category="Texture",
     why="Engines and marketplaces expect power-of-two textures within a maximum size "
         "so they compress and mipmap correctly.",
@@ -204,7 +204,7 @@ def detect_invalid_texture_sizes(power_of_two: bool = True, max_size: int = 8192
 # ---------- material slots ----------
 
 @AgentTools.register_check(
-    display_name="Empty material slots",
+    display_name="Detect Unused Material Slots",
     category="Texture",
     why="Empty or unused slots create extra material elements on import, which cost "
         "draw calls and confuse whoever sets up materials in engine.",

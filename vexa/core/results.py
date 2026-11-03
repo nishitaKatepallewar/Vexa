@@ -90,6 +90,15 @@ def summarize(issues: List[Issue], pass_text: str = "OK") -> str:
     return f"{len(issues)} issues"
 
 
+def problem_title(label: str) -> str:
+    """How a check is named in results: its label without "Detect ".
+
+    Check labels read as actions on buttons ("Detect N-gons"); results list the
+    problem itself ("N-gons").
+    """
+    return label[len("Detect "):] if label.startswith("Detect ") else label
+
+
 def plural(n: int, word: str) -> str:
     """'1 error', '2 errors'."""
     return f"{n} {word}" + ("" if n == 1 else "s")

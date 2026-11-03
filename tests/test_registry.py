@@ -93,6 +93,18 @@ def fix_called_as_a_tool_finds_issues_itself():
 
 
 @test
+def every_check_label_starts_with_detect():
+    from vexa.core.registry import CHECK
+    from vexa.core.results import problem_title
+    for check in AgentTools.all(CHECK):
+        if check.name.startswith("_t_"):
+            continue
+        assert check.display_name.startswith("Detect "), check.display_name
+        assert problem_title(check.display_name) == check.display_name[len("Detect "):]
+    assert problem_title("Flag all") == "Flag all"
+
+
+@test
 def fix_for_an_unknown_check_is_rejected():
     try:
         AgentTools.register_fix("_t_no_such_check")(lambda issues: "")
