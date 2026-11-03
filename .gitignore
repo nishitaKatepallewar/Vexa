@@ -1,5 +1,4 @@
 .agent/
-tests/
 __pycache__/
 *.pyc
 assets/

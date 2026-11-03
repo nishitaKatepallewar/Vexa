@@ -1,0 +1,21 @@
+{
+  "id": "unreal",
+  "name": "Unreal project",
+  "description": "Common Unreal Engine import requirements: lightmap UVs, UCX_ collision, SM_ naming.",
+  "order": 30,
+  "checks": {
+    "detect_unapplied_transforms": {"severity": "ERROR", "check_rotation": true},
+    "detect_negative_scale": {"severity": "ERROR"},
+    "detect_missing_uv_maps": {"severity": "ERROR"},
+    "detect_missing_lightmap_uvs": {"severity": "ERROR", "channel": 1},
+    "detect_invalid_collision_meshes": {"severity": "ERROR"},
+    "detect_missing_name_prefix": {"severity": "WARNING", "prefix": "SM_"},
+    "detect_invalid_name_characters": {"severity": "WARNING", "pattern": "^[A-Za-z0-9_]+$"},
+    "detect_missing_textures": {"severity": "ERROR"},
+    "detect_invalid_texture_sizes": {"severity": "WARNING", "power_of_two": true, "max_size": 8192},
+    "detect_color_space_issues": {"severity": "WARNING"},
+    "detect_unused_material_slots": {"severity": "WARNING"},
+    "detect_ngons": {"severity": "INFO"},
+    "detect_excess_bone_influences": {"severity": "WARNING", "max_influences": 8}
+  }
+}

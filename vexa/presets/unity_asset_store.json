@@ -1,0 +1,21 @@
+{
+  "id": "unity_asset_store",
+  "name": "Unity Asset Store",
+  "description": "Based on the Unity Asset Store submission guidelines (section 2.4).",
+  "source": "https://assetstore.unity.com/publishing/submission-guidelines",
+  "order": 10,
+  "checks": {
+    "detect_wrong_unit_scale": {"severity": "WARNING", "scale_length": 1.0},
+    "detect_unapplied_transforms": {"severity": "ERROR", "check_rotation": true},
+    "detect_negative_scale": {"severity": "ERROR"},
+    "detect_off_center_pivots": {"severity": "WARNING", "tolerance_m": 0.01},
+    "detect_missing_uv_maps": {"severity": "ERROR"},
+    "detect_missing_textures": {"severity": "ERROR"},
+    "detect_invalid_texture_sizes": {"severity": "WARNING", "power_of_two": true, "max_size": 8192},
+    "detect_color_space_issues": {"severity": "WARNING"},
+    "detect_unused_material_slots": {"severity": "WARNING"},
+    "detect_ngons": {"severity": "INFO"},
+    "detect_default_names": {"severity": "WARNING"},
+    "detect_excess_bone_influences": {"severity": "WARNING", "max_influences": 4}
+  }
+}
