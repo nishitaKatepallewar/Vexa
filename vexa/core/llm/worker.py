@@ -1,5 +1,7 @@
 """Runs one HTTPS request in a separate process and saves the JSON response.
 
+Provider-neutral: it sends whatever request an LLMClient built (see base.py).
+
 Blender's Python API docs ("Python Threads are Not Supported") recommend a separate
 process rather than a background thread for work that outlives the calling script.
 This file is executed by Blender's bundled Python as a standalone script; it never

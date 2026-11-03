@@ -43,7 +43,6 @@ class temporary_tools:
     def __exit__(self, *exc):
         for name in TEMP:
             AgentTools._tools.pop(name, None)
-        AgentTools._schemas[:] = [s for s in AgentTools._schemas if s["name"] not in TEMP]
         return False
 
 
@@ -60,14 +59,14 @@ def check_and_fix_are_registered_and_linked():
 
 
 @test
-def check_settings_appear_in_the_gemini_schema():
+def check_settings_appear_in_the_tool_spec():
     with temporary_tools():
-        schema = next(s for s in AgentTools.get_schemas() if s["name"] == "_t_flag_all")
-        props = schema["parameters"]["properties"]
-        assert props["limit"]["type"] == "INTEGER" and props["label"]["type"] == "STRING"
-        assert schema["parameters"]["required"] == []  # every setting has a default
-        fix_schema = next(s for s in AgentTools.get_schemas() if s["name"] == "_t_fix_all")
-        assert fix_schema["parameters"]["properties"] == {}  # the fix tool finds issues itself
+        spec = next(s for s in AgentTools.tool_specs() if s.name == "_t_flag_all")
+        props = spec.parameters["properties"]
+        assert props["limit"]["type"] == "integer" and props["label"]["type"] == "string"
+        assert spec.parameters["required"] == []  # every setting has a default
+        fix_spec = next(s for s in AgentTools.tool_specs() if s.name == "_t_fix_all")
+        assert fix_spec.parameters["properties"] == {}  # the fix tool finds issues itself
 
 
 @test
@@ -101,18 +100,18 @@ def fix_for_an_unknown_check_is_rejected():
 
 
 @test
-def reregistering_replaces_the_schema():
+def reregistering_replaces_the_entry():
     with temporary_tools():
-        count = len(AgentTools.get_schemas())
+        count = len(AgentTools.tool_specs())
         with temporary_tools():
-            assert len(AgentTools.get_schemas()) == count
+            assert len(AgentTools.tool_specs()) == count
 
 
 @test
 def import_all_registers_again_after_clear():
     before = {name for name in AgentTools._tools}
     AgentTools.clear()
-    assert not AgentTools.get_schemas()
+    assert not AgentTools.tool_specs()
     tools.import_all()
     after = {name for name in AgentTools._tools}
     assert before == after and "select_hard_edges" in after

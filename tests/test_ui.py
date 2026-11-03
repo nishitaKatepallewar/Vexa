@@ -178,17 +178,17 @@ def run() -> int:
     def ai_request_runs_in_separate_process():
         import time
         from vexa.core.prefs import get_prefs
-        from vexa.core import client as client_mod
+        from vexa.core.llm.gemini import GeminiClient
         from vexa.operators import execute_prompt as ep
         get_prefs().api_key = "test-key"
-        original = client_mod.GeminiClient.request_spec
+        original = GeminiClient.build_request
 
-        def unreachable(self, prompt, schemas):
-            spec = original(self, prompt, schemas)
-            spec.update(host="vexa-test.invalid", timeout=5)
-            return spec
+        def unreachable(self, prompt, tools):
+            request = original(self, prompt, tools)
+            request.host, request.timeout = "vexa-test.invalid", 5
+            return request
 
-        client_mod.GeminiClient.request_spec = unreachable
+        GeminiClient.build_request = unreachable
         try:
             scene.vexa_prompt = "find ngons"
             assert bpy.ops.vexa.execute_prompt() == {"FINISHED"}
@@ -199,7 +199,7 @@ def run() -> int:
             assert ep._pending["proc"] is None
             assert scene["vexa_last_response"].startswith("Error:"), scene["vexa_last_response"]
         finally:
-            client_mod.GeminiClient.request_spec = original
+            GeminiClient.build_request = original
             get_prefs().api_key = ""
 
     def quick_action_runs_a_check():
@@ -216,7 +216,7 @@ def run() -> int:
         from vexa.operators.execute_prompt import _dispatch_tool
         _dispatch_tool("detect_over_triangle_budget", {"max_tris": 1})
         assert scene["vexa_last_response"].startswith("Triangle budget:"), scene["vexa_last_response"]
-        names = {s["name"] for s in AgentTools.get_schemas()}
+        names = {s.name for s in AgentTools.tool_specs()}
         assert {"detect_ngons", "detect_missing_lightmap_uvs", "triangulate_ngons", "select_hard_edges"} <= names
 
     def reenable_keeps_tools():

@@ -10,15 +10,14 @@ import tempfile
 
 import bpy
 
-from ..core.client import create_llm_client
+from ..core.llm import WORKER_SCRIPT, create_client
 from ..core.prefs import get_prefs
 from ..core.registry import AgentTools
 
-# The network request runs in a separate process (core/ai_worker.py) so Blender's UI
+# The network request runs in a separate process (core/llm/worker.py) so Blender's UI
 # never freezes. Blender's API docs advise against Python threads that outlive the
 # script and recommend a separate process instead. A timer on the main thread polls
 # the process and does everything that touches bpy.
-_WORKER = os.path.join(os.path.dirname(os.path.dirname(__file__)), "core", "ai_worker.py")
 _pending = {"proc": None, "client": None, "out": ""}
 _POLL_SECONDS = 0.2
 
@@ -66,13 +65,6 @@ def _dispatch_tool(func_name: str, args: dict) -> None:
         _set_response(f"Execution Error: {e}")
 
 
-def _chat_text(response: dict) -> str:
-    try:
-        return response["candidates"][0]["content"]["parts"][0]["text"]
-    except (KeyError, IndexError, TypeError):
-        return "No understandable response."
-
-
 def _poll_request():
     """Timer callback: waits for the worker process, then acts on its result."""
     proc = _pending["proc"]
@@ -99,11 +91,11 @@ def _poll_request():
         _set_response(f"Error: {response['error']}")
         return None
 
-    func_name, args = client.parse_function_call(response)
-    if func_name:
-        _dispatch_tool(func_name, args)
+    reply = client.parse_response(response)
+    if reply.tool_call:
+        _dispatch_tool(reply.tool_call.name, reply.tool_call.args)
     else:
-        _set_response(_chat_text(response))
+        _set_response(reply.text or "No understandable response.")
     return None
 
 
@@ -131,17 +123,17 @@ class VexaExecutePromptOperator(bpy.types.Operator):
             self.report({"ERROR"}, "Add a Gemini API key in Vexa's preferences to use the AI assistant")
             return {"CANCELLED"}
 
-        client = create_llm_client("gemini", api_key, prefs.model_name)
-        schemas = AgentTools.get_schemas()
+        client = create_client("gemini", api_key, prefs.model_name)
+        request = client.build_request(prompt, AgentTools.tool_specs())
 
         fd, out_path = tempfile.mkstemp(prefix="vexa_ai_", suffix=".json")
         os.close(fd)
         try:
             proc = subprocess.Popen(
-                [sys.executable, "-I", _WORKER, out_path],
+                [sys.executable, "-I", WORKER_SCRIPT, out_path],
                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True,
             )
-            proc.stdin.write(json.dumps(client.request_spec(prompt, schemas)))
+            proc.stdin.write(json.dumps(request.to_dict()))
             proc.stdin.close()
         except OSError as e:
             self.report({"ERROR"}, f"Couldn't start the AI request: {e}")

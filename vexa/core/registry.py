@@ -1,17 +1,17 @@
-"""Registry module for Vexa tools exposed to Gemini.
+"""Registry module for Vexa tools exposed to the AI assistant.
 
 Every capability Vexa has is a registered tool, so the same function powers the
-quick-action buttons (direct path) and Gemini function calling (inference path).
+quick-action buttons (direct path) and LLM function calling (inference path).
 
 There are three kinds of tool:
 
 * plain tools (`AgentTools.register`): one-off actions such as "Select Hard Edges".
 * checks (`AgentTools.register_check`): find problems and return a list of
   `Issue`s. Keyword arguments with defaults are their settings (thresholds); presets
-  override them by name, and the generated schema exposes them to Gemini.
+  override them by name, and the tool spec exposes them to the LLM.
 * fixes (`AgentTools.register_fix`): safe one-click repairs for one check's issues.
 
-When a check or fix is called as a tool (a quick action or by Gemini) it runs on the
+When a check or fix is called as a tool (a quick action or by the LLM) it runs on the
 selected meshes and returns a readable summary, like any other tool.
 """
 
@@ -41,18 +41,30 @@ class ToolMetadata:
     check_name: Optional[str] = None  # the check whose issues this fix repairs
 
 
+@dataclass(frozen=True)
+class ToolSpec:
+    """A provider-neutral description of a tool for LLM function calling.
+
+    parameters: a standard JSON Schema object (lowercase types, e.g. "integer").
+    Each LLM client converts specs into its provider's request format.
+    """
+
+    name: str
+    description: str
+    parameters: Dict[str, Any]
+
+
 @dataclass
 class RegisteredTool:
-    """A registered tool with its function, schema, and metadata.
+    """A registered tool with its function and metadata.
 
-    func: what quick actions and Gemini call. For checks and fixes this is a wrapper
+    func: what quick actions and the LLM call. For checks and fixes this is a wrapper
           that runs on the selection and returns a summary string.
     impl: for checks and fixes, the underlying function the runner calls directly.
     """
 
     name: str
     func: Callable
-    schema: Dict[str, Any]
     metadata: ToolMetadata = field(default_factory=ToolMetadata)
     impl: Optional[Callable] = None
 
@@ -61,7 +73,6 @@ class AgentTools:
     """Registry for AI-exposed functions."""
 
     _tools: Dict[str, RegisteredTool] = {}
-    _schemas: List[Dict[str, Any]] = []
 
     @classmethod
     def register(
@@ -186,17 +197,14 @@ class AgentTools:
     @classmethod
     def _add(cls, func: Callable, metadata: ToolMetadata, impl: Optional[Callable] = None) -> None:
         name = func.__name__
-        schema = cls._generate_schema(func)
         # Re-registering (e.g. a module reloaded) replaces the old entry.
-        cls._schemas[:] = [s for s in cls._schemas if s["name"] != name]
-        cls._tools[name] = RegisteredTool(name=name, func=func, schema=schema, metadata=metadata, impl=impl)
-        cls._schemas.append(schema)
+        cls._tools.pop(name, None)
+        cls._tools[name] = RegisteredTool(name=name, func=func, metadata=metadata, impl=impl)
 
     @classmethod
     def clear(cls) -> None:
         """Removes every registered tool."""
         cls._tools.clear()
-        cls._schemas.clear()
 
     @classmethod
     def get_tool(cls, name: str) -> Optional[Callable]:
@@ -227,9 +235,9 @@ class AgentTools:
         return tool.metadata if tool else None
 
     @classmethod
-    def get_schemas(cls) -> List[Dict[str, Any]]:
-        """Returns the list of generated tool schemas."""
-        return cls._schemas
+    def tool_specs(cls) -> List[ToolSpec]:
+        """Provider-neutral specs for every registered tool, in registration order."""
+        return [_spec(tool.func) for tool in cls._tools.values()]
 
     @classmethod
     def get_categories(cls) -> List[str]:
@@ -247,63 +255,33 @@ class AgentTools:
             result[cat].append(tool)
         return result
 
-    @staticmethod
-    def _generate_schema(func: Callable) -> Dict[str, Any]:
-        """Generates a Gemini Function Declaration from a Python function.
 
-        Args:
-            func: The function to inspect.
+_JSON_TYPES = {int: "integer", float: "number", bool: "boolean"}
 
-        Returns:
-            A dictionary matching the Gemini `FunctionDeclaration` schema.
-        """
-        sig = inspect.signature(func)
-        doc = inspect.getdoc(func) or "No description provided."
 
-        parameters = {
-            "type": "OBJECT",
-            "properties": {},
-            "required": [],
-        }
+def _spec(func: Callable) -> ToolSpec:
+    """Builds a ToolSpec from a function's signature and docstring.
 
-        for name, param in sig.parameters.items():
-            param_type = "STRING"  # Default
-            prop_def = {}
-
-            if param.annotation == int:
-                param_type = "INTEGER"
-            elif param.annotation == float:
-                param_type = "NUMBER"
-            elif param.annotation == bool:
-                param_type = "BOOLEAN"
-
-            is_list = (
-                param.annotation == list or typing.get_origin(param.annotation) == list
-            )
-
-            if is_list:
-                param_type = "ARRAY"
-                prop_def = {
-                    "type": param_type,
-                    "items": {"type": "STRING"},
-                    "description": f"Parameter {name}",
-                }
-            else:
-                prop_def = {
-                    "type": param_type,
-                    "description": f"Parameter {name}",
-                }
-
-            parameters["properties"][name] = prop_def
-
-            if param.default == inspect.Parameter.empty:
-                parameters["required"].append(name)
-
-        return {
-            "name": func.__name__,
-            "description": doc,
-            "parameters": parameters,
-        }
+    Parameters without a default are required. Annotations map to JSON Schema
+    types: int, float, bool and list; anything else is a string.
+    """
+    properties: Dict[str, Any] = {}
+    required: List[str] = []
+    for name, param in inspect.signature(func).parameters.items():
+        annotation = param.annotation
+        if annotation is list or typing.get_origin(annotation) is list:
+            prop = {"type": "array", "items": {"type": "string"}}
+        else:
+            prop = {"type": _JSON_TYPES.get(annotation, "string")}
+        prop["description"] = f"Parameter {name}"
+        properties[name] = prop
+        if param.default is inspect.Parameter.empty:
+            required.append(name)
+    return ToolSpec(
+        name=func.__name__,
+        description=inspect.getdoc(func) or "No description provided.",
+        parameters={"type": "object", "properties": properties, "required": required},
+    )
 
 
 def _title(name: str) -> str:
