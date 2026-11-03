@@ -172,3 +172,26 @@ def detect_intersecting_meshes() -> list:
     return [Issue(name, f"{len(idx)} faces intersect another object", value=f"{len(idx)} faces",
                   element="FACE", indices=sorted(idx))
             for name, idx in hits.items() if idx]
+
+
+# ---------- triangle budget ----------
+
+@AgentTools.register_check(
+    display_name="Triangle budget",
+    category="Geometry",
+    why="Every platform has a performance budget. Going over it can get an asset "
+        "rejected or force an artist to redo LODs late.",
+    pass_text="Within budget",
+)
+def detect_over_triangle_budget(max_tris: int = 20000) -> list:
+    """Finds meshes whose triangle count exceeds a budget.
+
+    max_tris: the maximum number of triangles allowed per mesh.
+    """
+    issues = []
+    for obj in current().meshes:
+        tris = triangle_count(obj.data)
+        if tris > max_tris:
+            issues.append(Issue(obj.name, "Over triangle budget",
+                                value=f"{tris:,} tris", target=f"{max_tris:,}"))
+    return issues

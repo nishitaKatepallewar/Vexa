@@ -43,5 +43,14 @@ def intersecting_meshes_found():
     assert names == ["SM_A", "SM_B"], names
 
 
+@test
+def tri_budget():
+    fresh()
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4)  # 1280 tris
+    _, r = run("detect_over_triangle_budget", max_tris=1000)
+    assert r.status == "WARNING" and "1,280" in r.summary, r.summary
+    _, r = run("detect_over_triangle_budget", max_tris=5000)
+    assert r.status == "PASS"
+
 if __name__ == "__main__":
     main(globals())
