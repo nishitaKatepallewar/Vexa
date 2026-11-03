@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, Optional
 import bpy
 
 from . import runner
-from .registry import AgentTools
+from .registry import CHECK, FIX, AgentTools
 
 
 class UnknownToolError(LookupError):
@@ -30,17 +30,16 @@ def invoke(name: str, args: Optional[Dict[str, Any]] = None) -> str:
 
     Raises UnknownToolError for an unknown name; errors from the tool propagate.
     """
-    tool = AgentTools.get_registered(name)
+    tool = AgentTools.get(name)
     if tool is None:
         raise UnknownToolError(f"Tool '{name}' not found locally.")
-    kind = tool.metadata.kind
-    if kind == "check":  # runs on the selection, selects what it found, summarizes
+    if tool.kind == CHECK:  # runs on the selection, selects what it found, summarizes
         return runner.run_check_as_tool(name, match_arguments(tool.func, args or {}))
-    if kind == "fix":  # finds its check's issues on the selection, then fixes them
+    if tool.kind == FIX:  # finds its check's issues on the selection, then fixes them
         result = runner.run_fix_as_tool(name)
     else:
         result = tool.func(**match_arguments(tool.func, args or {}))
-    _push_undo(tool.metadata.display_name)
+    _push_undo(tool.display_name)
     return str(result)
 
 

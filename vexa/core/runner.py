@@ -13,7 +13,7 @@ import bpy
 
 from . import scope as scope_mod
 from .presets import Preset
-from .registry import AgentTools
+from .registry import CHECK, AgentTools
 from .results import PASS, CheckResult, Issue, overall_status, summarize
 
 
@@ -23,7 +23,7 @@ def check_settings(check_name: str, overrides: Optional[Dict] = None) -> Dict:
     Raises ValueError for a setting the check doesn't have, so a typo in a preset is
     reported instead of silently ignored.
     """
-    check = AgentTools.get_check(check_name)
+    check = AgentTools.get(check_name, kind=CHECK)
     params = inspect.signature(check.func).parameters
     settings = {k: p.default for k, p in params.items() if p.default is not inspect.Parameter.empty}
     for key, value in (overrides or {}).items():
@@ -36,23 +36,22 @@ def check_settings(check_name: str, overrides: Optional[Dict] = None) -> Dict:
 def run_check(check_name: str, overrides: Optional[Dict], scope: scope_mod.CheckScope,
               severity: Optional[str] = None) -> CheckResult:
     """Runs one check on a scope and wraps its issues in a CheckResult."""
-    check = AgentTools.get_check(check_name)
+    check = AgentTools.get(check_name, kind=CHECK)
     if check is None:
         return CheckResult(check_name, check_name, "INFO", "Unknown check (update Vexa?)")
-    meta = check.metadata
     try:
         settings = check_settings(check_name, overrides)
         with scope_mod.using(scope):
             issues: List[Issue] = check.func(**settings) or []
     except Exception as e:  # noqa: BLE001 - one broken check must never stop a run
-        return CheckResult(check_name, meta.display_name, "ERROR", f"Check failed: {e}", why=meta.why)
+        return CheckResult(check_name, check.display_name, "ERROR", f"Check failed: {e}", why=check.check.why)
     return CheckResult(
         check_id=check_name,
-        title=meta.display_name,
-        status=(severity or meta.default_severity) if issues else PASS,
-        summary=summarize(issues, meta.pass_text),
-        why=meta.why,
-        fixable=bool(meta.fix_name) and bool(issues),
+        title=check.display_name,
+        status=(severity or check.check.severity) if issues else PASS,
+        summary=summarize(issues, check.check.pass_text),
+        why=check.check.why,
+        fixable=bool(issues) and AgentTools.fix_for(check_name) is not None,
         issues=issues,
     )
 
@@ -68,10 +67,9 @@ def run_preset(preset: Preset, objects: Iterable, scene=None,
 
 def apply_fix(result: CheckResult, overrides: Optional[Dict], scope: scope_mod.CheckScope) -> str:
     """Applies a check's registered fix to the issues in `result`."""
-    check = AgentTools.get_check(result.check_id)
-    if not (check and check.metadata.fix_name and result.issues):
+    fix = AgentTools.fix_for(result.check_id)
+    if not (fix and result.issues):
         return "Nothing to fix"
-    fix = AgentTools.get_registered(check.metadata.fix_name)
     settings = check_settings(result.check_id, overrides)
     accepted = inspect.signature(fix.func).parameters
     kwargs = {k: v for k, v in settings.items() if k in accepted}
@@ -93,9 +91,9 @@ def run_check_as_tool(check_name: str, overrides: Optional[Dict] = None) -> str:
 
 def run_fix_as_tool(fix_name: str) -> str:
     """Finds the issues for a fix's check on the current scope, then fixes them."""
-    fix = AgentTools.get_registered(fix_name)
+    fix = AgentTools.get(fix_name)
     scope = scope_mod.current()
-    result = run_check(fix.metadata.check_name, None, scope)
+    result = run_check(fix.fix.check, None, scope)
     if not result.issues:
         return f"{result.title}: nothing to fix."
     return apply_fix(result, None, scope)

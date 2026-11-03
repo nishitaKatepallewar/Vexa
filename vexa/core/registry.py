@@ -1,43 +1,69 @@
-"""Registry module for Vexa tools exposed to the AI assistant.
+"""The registry of everything Vexa can do: tools, checks and fixes.
 
-Every capability Vexa has is a registered tool, so the same function powers the
-quick-action buttons (direct path) and LLM function calling (inference path).
+Every capability is a registered function, so the same entry powers the quick-action
+buttons (direct path), LLM function calling (inference path) and presets.
 
-There are three kinds of tool:
+There are three kinds:
 
-* plain tools (`AgentTools.register`): one-off actions such as "Select Hard Edges".
-* checks (`AgentTools.register_check`): find problems and return a list of
-  `Issue`s. Keyword arguments with defaults are their settings (thresholds); presets
-  override them by name, and the tool spec exposes them to the LLM.
+* tools (`AgentTools.register`): actions such as "Select Hard Edges". Return a message.
+* checks (`AgentTools.register_check`): find problems and return a list of `Issue`s.
+  Keyword arguments with defaults are their settings (thresholds); presets override
+  them by name, and the tool spec exposes them to the LLM.
 * fixes (`AgentTools.register_fix`): safe one-click repairs for one check's issues.
 
-The registry only stores functions and their metadata. It never runs anything:
-core/dispatch.py runs a tool by name, and core/runner.py runs checks for presets.
+The registry only stores functions and their metadata, and imports nothing else from
+Vexa. It never runs anything: core/dispatch.py runs a tool by name, and core/runner.py
+runs checks for presets.
 """
 
 import atexit
 import inspect
 import typing
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
+TOOL = "tool"
+CHECK = "check"
+FIX = "fix"
 
-@dataclass
-class ToolMetadata:
-    """Metadata for a registered tool."""
 
-    display_name: str = ""
+@dataclass(frozen=True)
+class CheckInfo:
+    """What only checks have.
+
+    why:       one sentence an artist understands: what breaks in engine if this fails.
+    severity:  default severity when the check finds issues: "ERROR", "WARNING" or "INFO".
+    pass_text: short text shown in results when nothing is wrong.
+    """
+
+    why: str
+    severity: str
+    pass_text: str
+
+
+@dataclass(frozen=True)
+class FixInfo:
+    """What only fixes have: the name of the check whose issues this fix repairs."""
+
+    check: str
+
+
+@dataclass(frozen=True)
+class RegisteredTool:
+    """One registry entry: the decorated function, unchanged, and its metadata.
+
+    `check` is set only for checks, and `fix` only for fixes.
+    """
+
+    name: str
+    func: Callable
+    kind: str
+    display_name: str
+    category: str
+    description: str
     is_quick_action: bool = False
-    category: str = "General"
-    description: str = ""
-    kind: str = "tool"  # "tool", "check" or "fix"
-    # Checks only:
-    why: str = ""  # one sentence an artist understands: what breaks in engine
-    default_severity: str = "WARNING"  # "ERROR", "WARNING" or "INFO"
-    pass_text: str = "OK"  # shown in results when nothing is wrong
-    fix_name: Optional[str] = None  # the registered fix for this check, if any
-    # Fixes only:
-    check_name: Optional[str] = None  # the check whose issues this fix repairs
+    check: Optional[CheckInfo] = None
+    fix: Optional[FixInfo] = None
 
 
 @dataclass(frozen=True)
@@ -53,19 +79,12 @@ class ToolSpec:
     parameters: Dict[str, Any]
 
 
-@dataclass
-class RegisteredTool:
-    """A registered tool: the decorated function, unchanged, and its metadata."""
-
-    name: str
-    func: Callable
-    metadata: ToolMetadata = field(default_factory=ToolMetadata)
-
-
 class AgentTools:
-    """Registry for AI-exposed functions."""
+    """Registry of every tool, check and fix, keyed by function name."""
 
     _tools: Dict[str, RegisteredTool] = {}
+
+    # ---------- registering ----------
 
     @classmethod
     def register(
@@ -74,24 +93,16 @@ class AgentTools:
         is_quick_action: bool = False,
         category: str = "General",
     ) -> Callable:
-        """Decorator to register a function as an AI tool.
+        """Decorator to register a tool: an action that returns a message.
 
         Args:
             display_name: Human-readable name for UI display.
-            is_quick_action: Whether to show as a button in the UI.
+            is_quick_action: Whether to show as a button under Tools.
             category: Category for grouping in UI.
-
-        Returns:
-            A decorator function.
         """
 
         def decorator(func: Callable) -> Callable:
-            cls._add(func, ToolMetadata(
-                display_name=display_name or _title(func.__name__),
-                is_quick_action=is_quick_action,
-                category=category,
-                description=inspect.getdoc(func) or "No description provided.",
-            ))
+            cls._add(func, TOOL, display_name, category, is_quick_action)
             return func
 
         return decorator
@@ -122,16 +133,8 @@ class AgentTools:
         """
 
         def decorator(func: Callable) -> Callable:
-            cls._add(func, ToolMetadata(
-                display_name=display_name or _title(func.__name__),
-                is_quick_action=is_quick_action,
-                category=category,
-                description=inspect.getdoc(func) or "No description provided.",
-                kind="check",
-                why=why,
-                default_severity=severity.upper(),
-                pass_text=pass_text,
-            ))
+            cls._add(func, CHECK, display_name, category, is_quick_action,
+                     check=CheckInfo(why=why, severity=severity.upper(), pass_text=pass_text))
             return func
 
         return decorator
@@ -148,99 +151,80 @@ class AgentTools:
 
         The decorated function receives the check's issues as its first argument,
         plus any of the check's settings it names, and returns a summary string.
+        A check has at most one fix.
         """
 
         def decorator(func: Callable) -> Callable:
-            check = cls._tools.get(check_name)
-            if check is None or check.metadata.kind != "check":
+            check = cls.get(check_name, kind=CHECK)
+            if check is None:
                 raise ValueError(f"register_fix: '{check_name}' is not a registered check")
-            cls._add(func, ToolMetadata(
-                display_name=display_name or _title(func.__name__),
-                is_quick_action=is_quick_action,
-                category=category or check.metadata.category,
-                description=inspect.getdoc(func) or "No description provided.",
-                kind="fix",
-                check_name=check_name,
-            ))
-            check.metadata.fix_name = func.__name__
+            cls._add(func, FIX, display_name, category or check.category, is_quick_action,
+                     fix=FixInfo(check=check_name))
             return func
 
         return decorator
 
     @classmethod
-    def _add(cls, func: Callable, metadata: ToolMetadata) -> None:
+    def _add(cls, func: Callable, kind: str, display_name: str, category: str,
+             is_quick_action: bool, check: Optional[CheckInfo] = None,
+             fix: Optional[FixInfo] = None) -> None:
         name = func.__name__
         # Re-registering (e.g. a module reloaded) replaces the old entry.
         cls._tools.pop(name, None)
-        cls._tools[name] = RegisteredTool(name=name, func=func, metadata=metadata)
+        cls._tools[name] = RegisteredTool(
+            name=name,
+            func=func,
+            kind=kind,
+            display_name=display_name or _title(name),
+            category=category,
+            description=inspect.getdoc(func) or "No description provided.",
+            is_quick_action=is_quick_action,
+            check=check,
+            fix=fix,
+        )
 
     @classmethod
     def clear(cls) -> None:
-        """Removes every registered tool."""
+        """Removes every registered entry."""
         cls._tools.clear()
 
-    @classmethod
-    def get_tool(cls, name: str) -> Optional[Callable]:
-        """Retrieves a registered function by name."""
-        tool = cls._tools.get(name)
-        return tool.func if tool else None
+    # ---------- looking up ----------
 
     @classmethod
-    def get_registered(cls, name: str) -> Optional[RegisteredTool]:
-        """Retrieves the full registry entry for a tool, check or fix."""
-        return cls._tools.get(name)
+    def get(cls, name: str, kind: Optional[str] = None) -> Optional[RegisteredTool]:
+        """The entry registered under `name`, or None. With `kind`, only an entry of that kind."""
+        entry = cls._tools.get(name)
+        if entry is None or (kind is not None and entry.kind != kind):
+            return None
+        return entry
 
     @classmethod
-    def get_check(cls, name: str) -> Optional[RegisteredTool]:
-        """Retrieves a registered check by name."""
-        tool = cls._tools.get(name)
-        return tool if tool and tool.metadata.kind == "check" else None
+    def all(cls, kind: Optional[str] = None) -> List[RegisteredTool]:
+        """Every entry in registration order. With `kind`, only entries of that kind."""
+        return [e for e in cls._tools.values() if kind is None or e.kind == kind]
 
     @classmethod
-    def get_checks(cls) -> List[RegisteredTool]:
-        """Returns every registered check."""
-        return [t for t in cls._tools.values() if t.metadata.kind == "check"]
-
-    @classmethod
-    def get_tool_metadata(cls, name: str) -> Optional[ToolMetadata]:
-        """Retrieves metadata for a registered tool."""
-        tool = cls._tools.get(name)
-        return tool.metadata if tool else None
+    def fix_for(cls, check_name: str) -> Optional[RegisteredTool]:
+        """The fix registered for a check, or None."""
+        return next((e for e in cls.all(FIX) if e.fix.check == check_name), None)
 
     @classmethod
     def tool_specs(cls) -> List[ToolSpec]:
-        """Provider-neutral specs for every registered tool, in registration order."""
-        return [_spec(tool) for tool in cls._tools.values()]
-
-    @classmethod
-    def get_categories(cls) -> List[str]:
-        """Returns all unique categories from registered tools."""
-        return sorted(set(t.metadata.category for t in cls._tools.values()))
-
-    @classmethod
-    def get_tools_by_category(cls) -> Dict[str, List[RegisteredTool]]:
-        """Returns tools grouped by category."""
-        result: Dict[str, List[RegisteredTool]] = {}
-        for tool in cls._tools.values():
-            cat = tool.metadata.category
-            if cat not in result:
-                result[cat] = []
-            result[cat].append(tool)
-        return result
+        """Provider-neutral specs for every entry, in registration order."""
+        return [_spec(entry) for entry in cls.all()]
 
 
 _JSON_TYPES = {int: "integer", float: "number", bool: "boolean"}
 
 
-def _spec(tool: RegisteredTool) -> ToolSpec:
-    """Builds a ToolSpec from a tool's signature and docstring.
+def _spec(entry: RegisteredTool) -> ToolSpec:
+    """Builds a ToolSpec from an entry's signature and docstring.
 
     Parameters without a default are required. Annotations map to JSON Schema
     types: int, float, bool and list; anything else is a string. A fix is offered
     without parameters: when called by name it finds its check's issues itself.
     """
-    func = tool.func
-    params = {} if tool.metadata.kind == "fix" else inspect.signature(func).parameters
+    params = {} if entry.kind == FIX else inspect.signature(entry.func).parameters
     properties: Dict[str, Any] = {}
     required: List[str] = []
     for name, param in params.items():
@@ -254,8 +238,8 @@ def _spec(tool: RegisteredTool) -> ToolSpec:
         if param.default is inspect.Parameter.empty:
             required.append(name)
     return ToolSpec(
-        name=func.__name__,
-        description=inspect.getdoc(func) or "No description provided.",
+        name=entry.name,
+        description=entry.description,
         parameters={"type": "object", "properties": properties, "required": required},
     )
 

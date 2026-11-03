@@ -15,7 +15,7 @@ import bpy  # noqa: E402
 
 from vexa import tools  # noqa: E402
 from vexa.core import dispatch  # noqa: E402
-from vexa.core.registry import AgentTools  # noqa: E402
+from vexa.core.registry import CHECK, AgentTools  # noqa: E402
 from vexa.core.results import Issue  # noqa: E402
 from vexa.core.scope import current  # noqa: E402
 from helpers import cube, fresh, main, test  # noqa: E402
@@ -50,13 +50,14 @@ class temporary_tools:
 @test
 def check_and_fix_are_registered_and_linked():
     with temporary_tools():
-        check = AgentTools.get_check("_t_flag_all")
-        fix = AgentTools.get_registered("_t_fix_all")
-        assert check.metadata.kind == "check" and check.metadata.fix_name == "_t_fix_all"
-        assert fix.metadata.kind == "fix" and fix.metadata.check_name == "_t_flag_all"
-        assert check.metadata.default_severity == "ERROR"
-        assert AgentTools.get_check("_t_fix_all") is None  # a fix isn't a check
-        assert "_t_flag_all" in [c.name for c in AgentTools.get_checks()]
+        check = AgentTools.get("_t_flag_all", kind=CHECK)
+        fix = AgentTools.get("_t_fix_all")
+        assert check.kind == "check" and check.fix is None and check.check.severity == "ERROR"
+        assert fix.kind == "fix" and fix.check is None and fix.fix.check == "_t_flag_all"
+        assert AgentTools.fix_for("_t_flag_all") is fix
+        assert AgentTools.get("_t_fix_all", kind=CHECK) is None  # a fix isn't a check
+        assert "_t_flag_all" in [c.name for c in AgentTools.all(CHECK)]
+        assert "_t_fix_all" not in [c.name for c in AgentTools.all(CHECK)]
 
 
 @test

@@ -8,7 +8,7 @@ from bpy_extras.io_utils import ExportHelper
 from ..core import runner
 from ..core.prefs import get_prefs
 from ..core.presets import get_preset, load_presets
-from ..core.registry import AgentTools
+from ..core.registry import CHECK, AgentTools
 from ..core.scope import build_scope
 from ..core.selection import select_result
 
@@ -160,9 +160,8 @@ class VEXA_OT_fix_check(bpy.types.Operator):
 
     @classmethod
     def description(cls, context, properties):
-        check = AgentTools.get_check(properties.check_id)
-        fix = AgentTools.get_registered(check.metadata.fix_name) if check and check.metadata.fix_name else None
-        return f"{fix.metadata.display_name}, then check again" if fix else cls.__doc__
+        fix = AgentTools.fix_for(properties.check_id)
+        return f"{fix.display_name}, then check again" if fix else cls.__doc__
 
     def execute(self, context):
         ensure_object_mode(context)
@@ -198,18 +197,18 @@ class VEXA_OT_explain_check(bpy.types.Operator):
 
     @classmethod
     def description(cls, context, properties):
-        check = AgentTools.get_check(properties.check_id)
-        return check.metadata.why if check else ""
+        check = AgentTools.get(properties.check_id, kind=CHECK)
+        return check.check.why if check else ""
 
     def execute(self, context):
-        check = AgentTools.get_check(self.check_id)
+        check = AgentTools.get(self.check_id, kind=CHECK)
         result = find_result(self.check_id)
         if not check:
             return {"CANCELLED"}
 
         def draw(menu, _context):
             col = menu.layout.column(align=True)
-            for line in textwrap.wrap(check.metadata.why, 60):
+            for line in textwrap.wrap(check.check.why, 60):
                 col.label(text=line)
             if result and result.issues:
                 col.separator()
@@ -219,7 +218,7 @@ class VEXA_OT_explain_check(bpy.types.Operator):
                 if len(result.issues) > 8:
                     col.label(text=f"…and {len(result.issues) - 8} more")
 
-        context.window_manager.popup_menu(draw, title=check.metadata.display_name, icon="QUESTION")
+        context.window_manager.popup_menu(draw, title=check.display_name, icon="QUESTION")
         return {"FINISHED"}
 
 

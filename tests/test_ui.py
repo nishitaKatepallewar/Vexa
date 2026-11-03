@@ -235,7 +235,7 @@ def run() -> int:
     def reenable_keeps_tools():
         vexa.unregister()
         vexa.register()
-        assert AgentTools.get_check("detect_ngons") and AgentTools.get_registered("select_hard_edges")
+        assert AgentTools.get("detect_ngons", kind="check") and AgentTools.get("select_hard_edges")
         log = draw_panel(panel.VexaMainPanel)  # no stale results after re-enabling
         assert ("template_list", "VEXA_UL_results") not in log
 

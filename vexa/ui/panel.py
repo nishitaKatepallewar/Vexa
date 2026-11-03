@@ -11,7 +11,7 @@ import bpy
 
 from ..core.prefs import has_ai_key
 from ..core.presets import get_preset
-from ..core.registry import AgentTools
+from ..core.registry import CHECK, AgentTools
 from ..core.results import overall_status
 from ..core.runner import check_settings
 from ..operators.check_ops import STATE, disabled_checks
@@ -39,8 +39,10 @@ def _get_tools_by_category():
     """Returns cached tools grouped by category."""
     global _CACHED_TOOLS_BY_CATEGORY, _CACHED_CATEGORIES
     if _CACHED_TOOLS_BY_CATEGORY is None:
-        _CACHED_TOOLS_BY_CATEGORY = AgentTools.get_tools_by_category()
-        _CACHED_CATEGORIES = AgentTools.get_categories()
+        _CACHED_TOOLS_BY_CATEGORY = {}
+        for tool in AgentTools.all():
+            _CACHED_TOOLS_BY_CATEGORY.setdefault(tool.category, []).append(tool)
+        _CACHED_CATEGORIES = sorted(_CACHED_TOOLS_BY_CATEGORY)
     return _CACHED_TOOLS_BY_CATEGORY, _CACHED_CATEGORIES
 
 
@@ -176,7 +178,7 @@ class VEXA_PT_preset_checks(bpy.types.Panel):
         off = disabled_checks(scene)
         col = layout.column(align=True)
         for check_id in preset.checks:
-            check = AgentTools.get_check(check_id)
+            check = AgentTools.get(check_id, kind=CHECK)
             if not check:
                 continue
             row = col.row(align=True)
@@ -186,7 +188,7 @@ class VEXA_PT_preset_checks(bpy.types.Panel):
             op.check_id = check_id
             sub = row.row()
             sub.active = enabled
-            sub.label(text=check.metadata.display_name)
+            sub.label(text=check.display_name)
             try:
                 params = check_settings(check_id, preset.settings(check_id))
             except ValueError:
@@ -212,7 +214,7 @@ class VEXA_PT_tools(bpy.types.Panel):
         tools_by_cat, categories = _get_tools_by_category()
 
         for cat in categories:
-            category_tools = [t for t in tools_by_cat.get(cat, []) if t.metadata.is_quick_action]
+            category_tools = [t for t in tools_by_cat.get(cat, []) if t.is_quick_action]
             if not category_tools:
                 continue
             expanded = _is_expanded(scene, cat)
@@ -228,7 +230,7 @@ class VEXA_PT_tools(bpy.types.Panel):
                     r = box.row(align=True)
                     op = r.operator("vexa.quick_action", text="", icon="TIME" if loading else "PLAY", emboss=False)
                     op.tool_name = tool.name
-                    r.label(text=tool.metadata.display_name)
+                    r.label(text=tool.display_name)
 
         response = scene.get("vexa_last_response", "")
         if response:
