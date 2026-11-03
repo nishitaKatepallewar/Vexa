@@ -5,6 +5,7 @@ import sys
 
 MODULES = (
     "general_tools",
+    "geometry_tools",
     "texture_tools",
 )
 

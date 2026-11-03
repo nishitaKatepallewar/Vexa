@@ -20,6 +20,12 @@ def _execute_tool_async(tool_name: str):
 
         result = func()
         scene["vexa_last_response"] = str(result)
+
+        # This runs in a timer, after the operator has finished, so Blender doesn't
+        # record an undo step for it. Push one for fixes so Ctrl+Z can revert them.
+        meta = AgentTools.get_tool_metadata(tool_name)
+        if meta and meta.kind == "fix" and bpy.ops.ed.undo_push.poll():
+            bpy.ops.ed.undo_push(message=meta.display_name)
     except Exception as e:
         logger.error(f"Quick action error for {tool_name}: {e}")
         scene["vexa_last_response"] = f"Error: {str(e)}"
