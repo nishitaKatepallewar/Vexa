@@ -2,10 +2,12 @@
 
 import bpy
 
-from .ui.panel import VexaMainPanel, VexaToggleCategory
+from .core import props
+from .core.registry import AgentTools
+from .operators import check_ops
 from .operators.execute_prompt import VexaExecutePromptOperator
 from .operators.quick_actions import VexaQuickAction
-from .core.registry import AgentTools
+from .ui.panel import PANEL_CLASSES, VexaToggleCategory
 
 bl_info = {
     "name": "Vexa",
@@ -13,7 +15,7 @@ bl_info = {
     "version": (0, 4, 0),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Vexa",
-    "description": "QC checks in seconds.",
+    "description": "Check game assets against Unity, Fab and Unreal targets before export.",
     "category": "3D View",
 }
 
@@ -22,6 +24,14 @@ class VexaPreferences(bpy.types.AddonPreferences):
     """Add-on preferences. All checks work without any of these settings."""
 
     bl_idname = __name__
+
+    presets_dir: bpy.props.StringProperty(
+        name="Team presets folder",
+        description="Optional folder of extra preset .json files, e.g. a shared studio spec",
+        subtype="DIR_PATH",
+        default="",
+        update=lambda self, context: check_ops.reload_presets(context),
+    )
 
     api_key: bpy.props.StringProperty(
         name="Gemini API Key",
@@ -37,6 +47,8 @@ class VexaPreferences(bpy.types.AddonPreferences):
 
     def draw(self, context: bpy.types.Context) -> None:
         layout = self.layout
+        layout.prop(self, "presets_dir")
+
         box = layout.box()
         box.label(text="AI assistant (optional)", icon="EXPERIMENTAL")
         box.prop(self, "api_key")
@@ -50,15 +62,23 @@ def _import_tools() -> None:
     tools.import_all()
 
 
+_CLASSES = (
+    (VexaPreferences,)
+    + props.CLASSES
+    + check_ops.CLASSES
+    + (VexaExecutePromptOperator, VexaToggleCategory, VexaQuickAction)
+    + PANEL_CLASSES
+)
+
+
 def _register() -> None:
     """Registers the add-on classes and properties."""
     _import_tools()
 
-    bpy.utils.register_class(VexaPreferences)
-    bpy.utils.register_class(VexaMainPanel)
-    bpy.utils.register_class(VexaExecutePromptOperator)
-    bpy.utils.register_class(VexaToggleCategory)
-    bpy.utils.register_class(VexaQuickAction)
+    for cls in _CLASSES:
+        bpy.utils.register_class(cls)
+    props.register_props()
+    check_ops.reload_presets()
 
     bpy.types.Scene.vexa_prompt = bpy.props.StringProperty(
         name="Prompt", description="Instruction for Vexa", default=""
@@ -70,20 +90,18 @@ def _register() -> None:
 
 def _unregister() -> None:
     """Unregisters the add-on classes and properties."""
-    bpy.utils.unregister_class(VexaPreferences)
-    bpy.utils.unregister_class(VexaMainPanel)
-    bpy.utils.unregister_class(VexaExecutePromptOperator)
-    bpy.utils.unregister_class(VexaToggleCategory)
-    bpy.utils.unregister_class(VexaQuickAction)
+    props.unregister_props()
+    for cls in reversed(_CLASSES):
+        bpy.utils.unregister_class(cls)
 
-    if "vexa_prompt" in bpy.types.Scene.__annotations__:
-        del bpy.types.Scene.__annotations__["vexa_prompt"]
-    if "vexa_last_response" in bpy.types.Scene.__annotations__:
-        del bpy.types.Scene.__annotations__["vexa_last_response"]
+    for name in ("vexa_prompt", "vexa_last_response"):
+        if hasattr(bpy.types.Scene, name):
+            delattr(bpy.types.Scene, name)
 
     from .ui.panel import _reset_tool_cache
 
     _reset_tool_cache()
+    check_ops.STATE.update(preset_id="", scope="", results=[])
 
     AgentTools.clear()
 
