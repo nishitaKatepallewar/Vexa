@@ -195,6 +195,15 @@ Built-in presets live in `vexa/presets/`. Teams can point **Preferences → Team
 presets folder** at a shared folder of their own. An unknown setting name is
 reported as an error rather than ignored.
 
+## Reports
+
+Export Report (the export button under the results) saves the last check. A `.html`
+file is the report people read: `vexa/templates/report.html` with the report data
+embedded, self-contained and offline-friendly. A `.json` file is the same data for
+scripts and pipelines. The template is plain HTML, CSS and JavaScript; edit it like
+any web page. `core/report.py` only inserts the data, escaped so object names can't
+break the page.
+
 ## State
 
 - **Per file** (saved in the `.blend`, on the scene): target, scope, checks turned off.

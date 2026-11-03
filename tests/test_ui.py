@@ -155,12 +155,20 @@ def run() -> int:
         assert "detect_default_names" in {r.check_id for r in STATE["results"]}
 
     def export_report():
+        import json
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "vexa_report.json")
-            assert bpy.ops.vexa.export_report(filepath=path) == {"FINISHED"}
-            import json
-            data = json.load(open(path))
+            assert bpy.ops.vexa.export_report(filepath=path, open_after=False) == {"FINISHED"}
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
             assert data["preset"]["id"] == "unity_asset_store" and data["results"]
+            html = os.path.join(d, "vexa_report.html")
+            assert bpy.ops.vexa.export_report(filepath=html, open_after=False) == {"FINISHED"}
+            with open(html, encoding="utf-8") as f:
+                assert f.read().startswith("<!doctype html>")
+            no_ext = os.path.join(d, "report")
+            assert bpy.ops.vexa.export_report(filepath=no_ext, open_after=False) == {"FINISHED"}
+            assert os.path.exists(no_ext + ".html")
 
     def team_presets_folder():
         from vexa.core.prefs import get_prefs
@@ -265,7 +273,7 @@ def run() -> int:
         ("fix one check", fix_one),
         ("fix all safe issues", fix_all),
         ("toggle a check off and on", toggle_check),
-        ("export JSON report", export_report),
+        ("export HTML and JSON reports", export_report),
         ("team presets folder", team_presets_folder),
         ("preferences draw", preferences_draw),
         ("AI panel hidden without key", ai_panel_hidden_without_key),
