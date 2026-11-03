@@ -172,6 +172,18 @@ def run() -> int:
             assert "acme" in items, items
             get_prefs().presets_dir = ""
 
+    def preferences_draw():
+        from vexa.core.prefs import get_prefs
+        prefs = get_prefs()
+        log = []
+        fake = type("Prefs", (), {name: getattr(prefs, name) for name in
+                                  ("presets_dir", "llm_provider", "api_key", "model_name")})()
+        fake.layout = FakeLayout(log)
+        vexa.VexaPreferences.draw(fake, bpy.context)
+        drawn = {entry[1] for entry in log if entry[0] == "prop"}
+        assert {"presets_dir", "llm_provider", "api_key", "model_name"} <= drawn, drawn
+        assert ("label", "Default model: gemini-2.5-flash") in log, log
+
     def ai_panel_hidden_without_key():
         assert not panel.VEXA_PT_ai.poll(bpy.context)
 
@@ -181,6 +193,7 @@ def run() -> int:
         from vexa.core.llm.gemini import GeminiClient
         from vexa.operators import execute_prompt as ep
         get_prefs().api_key = "test-key"
+        assert get_prefs().llm_provider == "gemini" and get_prefs().model_name == ""
         original = GeminiClient.build_request
 
         def unreachable(self, prompt, tools):
@@ -241,6 +254,7 @@ def run() -> int:
         ("toggle a check off and on", toggle_check),
         ("export JSON report", export_report),
         ("team presets folder", team_presets_folder),
+        ("preferences draw", preferences_draw),
         ("AI panel hidden without key", ai_panel_hidden_without_key),
         ("AI request runs in a separate process", ai_request_runs_in_separate_process),
         ("quick action runs a check and its fix", quick_action_runs_a_check),
@@ -250,7 +264,7 @@ def run() -> int:
     ]:
         step(name, fn)
 
-    print(f"\n{16 - len(failures)}/16 UI tests passed on Blender {bpy.app.version_string}")
+    print(f"\n{17 - len(failures)}/17 UI tests passed on Blender {bpy.app.version_string}")
     return len(failures)
 
 

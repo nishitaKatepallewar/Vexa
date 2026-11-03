@@ -3,6 +3,7 @@
 import bpy
 
 from .core import props
+from .core.llm import PROVIDERS
 from .core.registry import AgentTools
 from .operators import check_ops
 from .operators.execute_prompt import VexaExecutePromptOperator
@@ -33,16 +34,22 @@ class VexaPreferences(bpy.types.AddonPreferences):
         update=lambda self, context: check_ops.reload_presets(context),
     )
 
+    llm_provider: bpy.props.EnumProperty(
+        name="Provider",
+        description="Which LLM the AI assistant uses",
+        items=[(key, cls.label, f"Use {cls.label}") for key, cls in PROVIDERS.items()],
+    )
+
     api_key: bpy.props.StringProperty(
-        name="Gemini API Key",
+        name="API Key",
         description="Only needed for the AI instruction box. All checks work without it",
         subtype="PASSWORD",
     )
 
     model_name: bpy.props.StringProperty(
-        name="Model Name",
-        description="Gemini Model Identifier (e.g. gemini-2.5-flash)",
-        default="gemini-2.5-flash",
+        name="Model",
+        description="Model identifier. Leave empty to use the provider's default",
+        default="",
     )
 
     def draw(self, context: bpy.types.Context) -> None:
@@ -51,8 +58,11 @@ class VexaPreferences(bpy.types.AddonPreferences):
 
         box = layout.box()
         box.label(text="AI assistant (optional)", icon="EXPERIMENTAL")
+        box.prop(self, "llm_provider")
         box.prop(self, "api_key")
         box.prop(self, "model_name")
+        if not self.model_name.strip():
+            box.label(text=f"Default model: {PROVIDERS[self.llm_provider].default_model}")
 
 
 def _import_tools() -> None:

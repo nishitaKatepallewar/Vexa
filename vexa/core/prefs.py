@@ -15,6 +15,6 @@ def get_prefs(context: bpy.types.Context = None):
 
 
 def has_ai_key(context: bpy.types.Context = None) -> bool:
-    """True when the optional Gemini key has been entered."""
+    """True when the optional LLM API key has been entered."""
     prefs = get_prefs(context)
     return bool(prefs and prefs.api_key.strip())

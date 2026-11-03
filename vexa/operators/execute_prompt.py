@@ -120,10 +120,10 @@ class VexaExecutePromptOperator(bpy.types.Operator):
             return {"CANCELLED"}
 
         if not api_key:
-            self.report({"ERROR"}, "Add a Gemini API key in Vexa's preferences to use the AI assistant")
+            self.report({"ERROR"}, "Add an API key in Vexa's preferences to use the AI assistant")
             return {"CANCELLED"}
 
-        client = create_client("gemini", api_key, prefs.model_name)
+        client = create_client(prefs.llm_provider, api_key, prefs.model_name.strip())
         request = client.build_request(prompt, AgentTools.tool_specs())
 
         fd, out_path = tempfile.mkstemp(prefix="vexa_ai_", suffix=".json")
