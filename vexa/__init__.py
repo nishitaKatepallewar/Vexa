@@ -45,8 +45,9 @@ class VexaPreferences(bpy.types.AddonPreferences):
 
 def _import_tools() -> None:
     """Import all tool modules to register them with AgentTools."""
-    from .tools import general_tools
-    from .tools import texture_tools
+    from . import tools
+
+    tools.import_all()
 
 
 def _register() -> None:
