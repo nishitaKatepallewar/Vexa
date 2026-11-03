@@ -16,7 +16,7 @@ bl_info = {
     "version": (0, 5, 0),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Vexa",
-    "description": "Check game assets against Unity, Fab and Unreal targets before export.",
+    "description": "QC checks for game assets, in seconds.",
     "category": "3D View",
 }
 
