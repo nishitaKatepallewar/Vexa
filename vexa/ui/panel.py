@@ -1,7 +1,8 @@
 """Vexa's sidebar UI.
 
 Layout (top to bottom):
-  Vexa                 target preset, scope, one Check button, results list
+  Vexa                 target preset, scope, one Check button
+    Results            after a check: the summary in its header, the results list
     Checks in preset   (collapsed) turn individual checks on/off, see thresholds
     Tools              (collapsed) one-off tools: select hard edges, triangulate…
     Ask Vexa           only when an API key is set
@@ -99,7 +100,6 @@ class VexaMainPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        wm = context.window_manager
 
         col = layout.column(align=True)
         col.label(text="Target")
@@ -110,26 +110,47 @@ class VexaMainPanel(bpy.types.Panel):
         big.scale_y = 1.6
         big.operator("vexa.run_checks", text="Check Assets", icon="PLAY")
 
-        # STATE is empty after a restart or re-enable, even if Blender kept the old list.
-        if not wm.vexa_has_run or not STATE["preset_id"]:
-            box = layout.box()
-            box.label(text="Pick a target, select your meshes,", icon="INFO")
-            box.label(text="then click Check Assets.")
-            return
 
+def _has_results(context) -> bool:
+    # STATE is empty after a restart or re-enable, even if Blender kept the old list.
+    return context.window_manager.vexa_has_run and bool(STATE["preset_id"])
+
+
+def _summary(results) -> str:
+    status = overall_status(results)
+    errors = sum(1 for r in results if r.status == "ERROR")
+    warnings = sum(1 for r in results if r.status == "WARNING")
+    return f"{OVERALL_TEXT[status]} · {plural(errors, 'error')} · {plural(warnings, 'warning')}"
+
+
+class VEXA_PT_results(bpy.types.Panel):
+    """The last check's results. Collapsible; the header keeps the summary visible."""
+
+    bl_label = ""
+    bl_idname = "VEXA_PT_results"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Vexa"
+    bl_parent_id = "VEXA_PT_main_panel"
+    bl_order = 0
+
+    @classmethod
+    def poll(cls, context):
+        return _has_results(context)
+
+    def draw_header(self, context):
+        status = overall_status(STATE["results"])
+        row = self.layout.row()
+        row.alert = status == "ERROR"
+        row.label(text=_summary(STATE["results"]), icon=STATUS_ICON[status])
+
+    def draw(self, context):
+        layout = self.layout
+        wm = context.window_manager
         results = STATE["results"]
-        status = overall_status(results)
-        counts = {s: sum(1 for r in results if r.status == s) for s in ("ERROR", "WARNING")}
 
-        box = layout.box()
-        head = box.row()
-        head.alert = status == "ERROR"
-        head.label(
-            text=f"{OVERALL_TEXT[status]} · {plural(counts['ERROR'], 'error')} · {plural(counts['WARNING'], 'warning')}",
-            icon=STATUS_ICON[status],
-        )
-        if _results_are_stale(scene):
-            box.label(text="Target or scope changed. Check again to update.", icon="FILE_REFRESH")
+        if _results_are_stale(context.scene):
+            layout.label(text="Target or scope changed. Check again to update.", icon="FILE_REFRESH")
 
         layout.template_list(
             "VEXA_UL_results", "", wm, "vexa_results", wm, "vexa_results_index",
@@ -148,6 +169,7 @@ class VEXA_PT_preset_checks(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category = "Vexa"
     bl_parent_id = "VEXA_PT_main_panel"
+    bl_order = 1
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
@@ -195,6 +217,7 @@ class VEXA_PT_tools(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category = "Vexa"
     bl_parent_id = "VEXA_PT_main_panel"
+    bl_order = 2
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
@@ -228,6 +251,7 @@ class VEXA_PT_ai(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category = "Vexa"
     bl_parent_id = "VEXA_PT_main_panel"
+    bl_order = 3
     bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -259,4 +283,4 @@ class VexaToggleCategory(bpy.types.Operator):
         return {"FINISHED"}
 
 
-PANEL_CLASSES = (VEXA_UL_results, VexaMainPanel, VEXA_PT_preset_checks, VEXA_PT_tools, VEXA_PT_ai)
+PANEL_CLASSES = (VEXA_UL_results, VexaMainPanel, VEXA_PT_results, VEXA_PT_preset_checks, VEXA_PT_tools, VEXA_PT_ai)
