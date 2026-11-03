@@ -5,7 +5,7 @@ import textwrap
 import bpy
 from bpy_extras.io_utils import ExportHelper
 
-from ..core import runner
+from ..core import report, runner
 from ..core.prefs import get_prefs
 from ..core.presets import get_preset, load_presets
 from ..core.registry import CHECK, AgentTools
@@ -251,7 +251,7 @@ class VEXA_OT_export_report(bpy.types.Operator, ExportHelper):
 
     def execute(self, context):
         preset = get_preset(STATE["preset_id"])
-        runner.write_report(self.filepath, preset, STATE["results"], STATE["scope"])
+        report.write_report(self.filepath, preset, STATE["results"], STATE["scope"])
         self.report({"INFO"}, f"Report saved: {self.filepath}")
         return {"FINISHED"}
 

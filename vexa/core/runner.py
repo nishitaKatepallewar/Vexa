@@ -1,20 +1,16 @@
 """Runs registered checks and fixes.
 
-No UI code here, so the same functions power the panel, quick actions, the AI path,
-reports and tests.
+No UI code here, so the same functions power the panel, quick actions, the AI path
+and tests. Saving results to a file lives in core/report.py.
 """
 
-import datetime
 import inspect
-import json
 from typing import Dict, Iterable, List, Optional, Set
-
-import bpy
 
 from . import scope as scope_mod
 from .presets import Preset
 from .registry import CHECK, AgentTools
-from .results import PASS, CheckResult, Issue, overall_status, summarize
+from .results import PASS, CheckResult, Issue, summarize
 
 
 def check_settings(check_name: str, overrides: Optional[Dict] = None) -> Dict:
@@ -110,24 +106,3 @@ def describe(result: CheckResult, max_issues: int = 5) -> str:
     if len(result.issues) > max_issues:
         lines.append(f"  - …and {len(result.issues) - max_issues} more")
     return "\n".join(lines)
-
-
-# ---------- reports ----------
-
-def report_dict(preset: Preset, results: List[CheckResult], scope: str = "") -> dict:
-    return {
-        "tool": "Vexa",
-        "preset": {"id": preset.id, "name": preset.name, "source": preset.source},
-        "file": bpy.data.filepath or "(unsaved)",
-        "scope": scope,
-        "blender": bpy.app.version_string,
-        "created": datetime.datetime.now().isoformat(timespec="seconds"),
-        "status": overall_status(results),
-        "counts": {s: sum(1 for r in results if r.status == s) for s in ("ERROR", "WARNING", "INFO", "PASS")},
-        "results": [r.to_dict() for r in results],
-    }
-
-
-def write_report(path: str, preset: Preset, results: List[CheckResult], scope: str = "") -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(report_dict(preset, results, scope), f, indent=2, ensure_ascii=False)

@@ -69,6 +69,7 @@ class CheckResult:
             "title": self.title,
             "status": self.status,
             "summary": self.summary,
+            "why": self.why,
             "fixable": self.fixable,
             "issues": [i.to_dict() for i in self.issues],
         }

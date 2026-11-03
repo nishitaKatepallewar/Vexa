@@ -17,7 +17,8 @@ core/registry.py        AgentTools: name → function + metadata. Pure data.
         │       ├── operators/quick_actions.py   Tools buttons             (direct path)
         │       └── operators/execute_prompt.py  Ask Vexa, via core/llm/   (inference path)
         │
-        └── core/runner.py       run a preset's checks, apply fixes, write reports
+        └── core/runner.py       run a preset's checks, apply fixes
+                ├── core/report.py   save a run as a report
                 └── operators/check_ops.py + ui/panel.py   Check Assets panel (preset path)
 ```
 
@@ -44,13 +45,14 @@ vexa/
   core/
     registry.py     AgentTools: every tool, check and fix, and their LLM tool specs
     dispatch.py     invoke(name, args): the one way to run something by name
-    runner.py       runs checks with preset settings, applies fixes, writes reports
+    runner.py       runs checks with preset settings, applies fixes
+    report.py       turns a run into a report and saves it
     results.py      Issue and CheckResult: what every check returns
     scope.py        which meshes a check looks at (selection, or the runner's scope)
     selection.py    selects the objects and faces a check flagged
     presets.py      loads preset .json files
     props.py        Blender properties: per-file (scene) and per-session (window manager)
-    prefs.py        reads the add-on preferences
+    prefs.py        reads the add-on preferences and version
     llm/            LLM providers: base.py (interface), gemini.py, worker.py (HTTP in a subprocess)
   tools/            every tool, check and fix, one module per area
   presets/          built-in targets: general, unity_asset_store, fab, unreal
