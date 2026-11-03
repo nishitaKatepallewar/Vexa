@@ -12,7 +12,7 @@ from .ui.panel import PANEL_CLASSES, VexaToggleCategory
 bl_info = {
     "name": "Vexa",
     "author": "Vexa Team",
-    "version": (0, 4, 0),
+    "version": (0, 5, 0),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Vexa",
     "description": "Check game assets against Unity, Fab and Unreal targets before export.",
