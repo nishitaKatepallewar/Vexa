@@ -51,5 +51,26 @@ def normal_map_in_srgb_is_flagged_and_fixed():
     assert r.status == "PASS"
 
 
+@test
+def texture_sizes():
+    _crate_with_textures()
+    _, r = run("detect_invalid_texture_sizes")
+    assert any("T_Crate_N" in i.message for i in r.issues), r.issues
+    _, r = run("detect_invalid_texture_sizes", power_of_two=False)
+    assert r.status == "PASS", r.issues
+
+
+@test
+def empty_slots():
+    fresh()
+    c = cube()
+    c.data.materials.append(bpy.data.materials.new("M_Used"))
+    c.data.materials.append(None)  # slot 1: no faces use it
+    _, r = run("detect_unused_material_slots")
+    assert r.status == "WARNING" and "1 unused" in r.issues[0].message, r.issues
+    _, r = fix("detect_unused_material_slots")
+    assert r.status == "PASS" and len(c.material_slots) == 1
+
+
 if __name__ == "__main__":
     main(globals())

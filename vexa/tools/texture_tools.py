@@ -162,3 +162,88 @@ def fix_color_spaces(issues) -> str:
             image.colorspace_settings.name = issue.target
             fixed += 1
     return f"Fixed colour space on {fixed} images"
+
+
+# ---------- texture size ----------
+
+@AgentTools.register_check(
+    display_name="Texture sizes",
+    category="Texture",
+    why="Engines and marketplaces expect power-of-two textures within a maximum size "
+        "so they compress and mipmap correctly.",
+    pass_text="Power of two",
+)
+def detect_invalid_texture_sizes(power_of_two: bool = True, max_size: int = 8192) -> list:
+    """Finds textures that aren't power-of-two sized, or exceed a maximum size.
+
+    power_of_two: require both dimensions to be powers of two.
+    max_size: the largest allowed width or height, in pixels.
+    """
+    issues, seen = [], set()
+    for obj in current().meshes:
+        for mat in _materials(obj):
+            for node in _image_nodes(mat):
+                image = node.image
+                if image is None or image.name in seen:
+                    continue
+                w, h = image.size[:]
+                if w == 0 or h == 0:
+                    continue
+                seen.add(image.name)
+                problems = []
+                if power_of_two and (w & (w - 1) or h & (h - 1)):
+                    problems.append("not power of two")
+                if max(w, h) > max_size:
+                    problems.append(f"over {max_size}px")
+                if problems:
+                    issues.append(Issue(obj.name, f"{image.name}: " + ", ".join(problems),
+                                        value=f"{image.name} {w}×{h}", target=f"2ⁿ ≤ {max_size}"))
+    return issues
+
+
+# ---------- material slots ----------
+
+@AgentTools.register_check(
+    display_name="Empty material slots",
+    category="Texture",
+    why="Empty or unused slots create extra material elements on import, which cost "
+        "draw calls and confuse whoever sets up materials in engine.",
+    pass_text="None",
+)
+def detect_unused_material_slots() -> list:
+    """Finds material slots no face uses, and empty slots that faces do use."""
+    issues = []
+    for obj in current().meshes:
+        if not obj.material_slots:
+            continue
+        used = {p.material_index for p in obj.data.polygons}
+        unused = [i for i in range(len(obj.material_slots)) if i not in used]
+        empty = [i for i, s in enumerate(obj.material_slots) if s.material is None and i in used]
+        parts = []
+        if unused:
+            parts.append(f"{len(unused)} unused")
+        if empty:
+            parts.append(f"{len(empty)} empty but assigned to faces")
+        if parts:
+            issues.append(Issue(obj.name, "Material slots: " + ", ".join(parts),
+                                value=f"{len(unused) + len(empty)} slots"))
+    return issues
+
+
+@AgentTools.register_fix("detect_unused_material_slots", display_name="Remove Unused Material Slots")
+def remove_unused_material_slots(issues) -> str:
+    """Removes slots no face uses. Empty slots that faces use need a material assigned by hand."""
+    scene = current().scene
+    removed = 0
+    for issue in issues:
+        obj = scene.objects.get(issue.object_name)
+        if not obj:
+            continue
+        before = len(obj.material_slots)
+        with bpy.context.temp_override(object=obj, active_object=obj,
+                                       selected_objects=[obj], selected_editable_objects=[obj]):
+            if not bpy.ops.object.material_slot_remove_unused.poll():
+                continue
+            bpy.ops.object.material_slot_remove_unused()
+        removed += before - len(obj.material_slots)
+    return f"Removed {removed} unused slots"
