@@ -1,0 +1,342 @@
+[
+  {
+    "name": "count_vertices",
+    "description": "Counts total vertices in selected objects.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "rename_object",
+    "description": "Renames the active object.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "new_name": {
+          "type": "STRING",
+          "description": "Parameter new_name"
+        }
+      },
+      "required": [
+        "new_name"
+      ]
+    }
+  },
+  {
+    "name": "select_hard_edges",
+    "description": "Selects all sharp edges in the active mesh.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_ngons",
+    "description": "Finds faces with more than four sides in the selected meshes.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "triangulate_ngons",
+    "description": "Triangulates every n-gon in the selected meshes.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_nonplanar_faces",
+    "description": "Finds quads and n-gons whose vertices don't lie on one plane.\n\nthreshold_deg: how far (in degrees) a vertex may bend out of the face's plane.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "threshold_deg": {
+          "type": "NUMBER",
+          "description": "Parameter threshold_deg"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "triangulate_nonplanar_faces",
+    "description": "Triangulates every non-planar face in the selected meshes.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_intersecting_meshes",
+    "description": "Finds faces where separate selected meshes intersect each other.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_over_triangle_budget",
+    "description": "Finds meshes whose triangle count exceeds a budget.\n\nmax_tris: the maximum number of triangles allowed per mesh.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "max_tris": {
+          "type": "INTEGER",
+          "description": "Parameter max_tris"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "detect_unapplied_transforms",
+    "description": "Finds meshes whose scale isn't 1, or whose rotation isn't 0.\n\ncheck_rotation: also require rotation to be applied, not just scale.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "check_rotation": {
+          "type": "BOOLEAN",
+          "description": "Parameter check_rotation"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "apply_transforms",
+    "description": "Applies scale (and rotation) on meshes with unapplied transforms.\n\nSkips mirrored meshes and meshes that share data with other objects.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_negative_scale",
+    "description": "Finds meshes mirrored with a negative scale.\n\nTo fix by hand: apply scale, then Mesh > Normals > Recalculate Outside.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_off_center_pivots",
+    "description": "Finds meshes whose origin isn't at the bottom centre of their bounds.\n\ntolerance_m: how far (in metres) the origin may be from the bottom centre.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "tolerance_m": {
+          "type": "NUMBER",
+          "description": "Parameter tolerance_m"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "move_pivots_to_bottom_center",
+    "description": "Moves each flagged mesh's origin to the bottom centre without moving the mesh.\n\nSkips meshes with children or shared mesh data.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_wrong_unit_scale",
+    "description": "Checks the scene's unit scale against what the target engine expects.\n\nscale_length: the expected Unit Scale (1.0 means 1 Blender unit = 1 metre).",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "scale_length": {
+          "type": "NUMBER",
+          "description": "Parameter scale_length"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "set_unit_scale",
+    "description": "Sets the scene's unit scale to the expected value.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_missing_uv_maps",
+    "description": "Finds meshes with no UV map at all.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_missing_lightmap_uvs",
+    "description": "Finds meshes without a lightmap UV channel, or whose lightmap UVs leave 0\u20131.\n\nchannel: index of the lightmap UV map (Unreal uses 1, the second map).",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "channel": {
+          "type": "INTEGER",
+          "description": "Parameter channel"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "detect_missing_textures",
+    "description": "Finds Image Texture nodes with no image assigned, or whose file is missing.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_color_space_issues",
+    "description": "Finds data maps (normal, roughness, metallic) set to sRGB, and colour maps set to Non-Color.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "fix_color_spaces",
+    "description": "Sets each flagged image to the colour space its role needs.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_invalid_texture_sizes",
+    "description": "Finds textures that aren't power-of-two sized, or exceed a maximum size.\n\npower_of_two: require both dimensions to be powers of two.\nmax_size: the largest allowed width or height, in pixels.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "power_of_two": {
+          "type": "BOOLEAN",
+          "description": "Parameter power_of_two"
+        },
+        "max_size": {
+          "type": "INTEGER",
+          "description": "Parameter max_size"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "detect_unused_material_slots",
+    "description": "Finds material slots no face uses, and empty slots that faces do use.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "remove_unused_material_slots",
+    "description": "Removes slots no face uses. Empty slots that faces use need a material assigned by hand.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_default_names",
+    "description": "Finds meshes still using Blender's default names (Cube.001, Plane, \u2026).",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_invalid_name_characters",
+    "description": "Finds object and material names with characters the target doesn't allow.\n\npattern: regular expression every name must match.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "pattern": {
+          "type": "STRING",
+          "description": "Parameter pattern"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "fix_invalid_names",
+    "description": "Replaces invalid characters in flagged object and material names with underscores.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_missing_name_prefix",
+    "description": "Finds render meshes missing a required name prefix. Collision meshes are ignored.\n\nprefix: the prefix every render mesh name must start with.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "prefix": {
+          "type": "STRING",
+          "description": "Parameter prefix"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "add_name_prefix",
+    "description": "Adds the prefix to flagged meshes and renames their collision meshes to match.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_invalid_collision_meshes",
+    "description": "Finds UCX_ collision meshes that don't match a render mesh name, or aren't convex.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_excess_bone_influences",
+    "description": "Finds vertices weighted to more deforming bones than the engine supports.\n\nmax_influences: the most bones allowed to influence one vertex.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "max_influences": {
+          "type": "INTEGER",
+          "description": "Parameter max_influences"
+        }
+      },
+      "required": []
+    }
+  }
+]

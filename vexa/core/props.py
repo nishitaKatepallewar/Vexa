@@ -51,12 +51,18 @@ def register_props():
     WM.vexa_results = bpy.props.CollectionProperty(type=VexaResultItem)
     WM.vexa_results_index = bpy.props.IntProperty(default=-1)
     WM.vexa_has_run = bpy.props.BoolProperty(default=False)
+    WM.vexa_prompt = bpy.props.StringProperty(name="Prompt", description="Instruction for Vexa", default="")
+    WM.vexa_last_response = bpy.props.StringProperty(name="Response", description="Feedback from Vexa", default="")
+    WM.vexa_expanded_categories = bpy.props.StringProperty(
+        name="Expanded Categories", description="Tool categories open under Tools", default=""
+    )
 
 
 def unregister_props():
     for owner, names in (
         (bpy.types.Scene, ("vexa_preset", "vexa_scope", "vexa_disabled_checks")),
-        (bpy.types.WindowManager, ("vexa_results", "vexa_results_index", "vexa_has_run")),
+        (bpy.types.WindowManager, ("vexa_results", "vexa_results_index", "vexa_has_run", "vexa_prompt",
+                                   "vexa_last_response", "vexa_expanded_categories")),
     ):
         for name in names:
             if hasattr(owner, name):

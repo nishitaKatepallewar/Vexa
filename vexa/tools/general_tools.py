@@ -8,27 +8,7 @@ import bpy
 import numpy as np
 
 from ..core.registry import AgentTools
-
-
-def _selected_meshes():
-    """Yields mesh objects from current selection."""
-    for obj in bpy.context.selected_objects:
-        if obj.type == "MESH":
-            yield obj
-
-
-
-def _switch_to_edit(select_type="FACE"):
-    """Switches to edit mode with specified selection type."""
-    bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_mode(type=select_type)
-
-
-
-def _switch_to_object():
-    """Switches to object mode."""
-    bpy.ops.object.mode_set(mode="OBJECT")
-
+from ..core.scope import current
 
 
 @AgentTools.register()
@@ -37,7 +17,7 @@ def count_vertices() -> str:
     total = 0
     processed = []
 
-    for obj in _selected_meshes():
+    for obj in current().all_meshes:
         total += len(obj.data.vertices)
         processed.append(obj.name)
 
@@ -45,7 +25,6 @@ def count_vertices() -> str:
         return "No objects selected."
 
     return f"Counted {total} vertices in {len(processed)} objects ({', '.join(processed)})."
-
 
 
 @AgentTools.register()
@@ -60,7 +39,6 @@ def rename_object(new_name: str) -> str:
     return f"Renamed '{old_name}' to '{new_name}'."
 
 
-
 @AgentTools.register(
     display_name="Select Hard Edges",
     is_quick_action=True,
@@ -72,7 +50,7 @@ def select_hard_edges() -> str:
     if not obj or obj.type != "MESH":
         return "No active mesh object selected."
 
-    _switch_to_object()
+    bpy.ops.object.mode_set(mode="OBJECT")
     edge_count = len(obj.data.edges)
     sharp = np.zeros(edge_count, dtype=bool)
     obj.data.edges.foreach_get("use_edge_sharp", sharp)
@@ -81,5 +59,6 @@ def select_hard_edges() -> str:
 
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
-    _switch_to_edit("EDGE")
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_mode(type="EDGE")
     return f"{count} sharp edges detected."

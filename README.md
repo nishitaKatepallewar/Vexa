@@ -50,6 +50,7 @@ blender -b --factory-startup -P tests/run_all.py
 To type instructions in plain English instead of clicking checks:
 
 1. Expand Vexa in Edit > Preferences > Add-ons
-2. Paste a [Gemini API Key](https://aistudio.google.com/app/apikey)
+2. Pick a provider (currently Google Gemini) and paste its API key, e.g. a [Gemini API key](https://aistudio.google.com/app/apikey)
+3. Optionally set a model; leave it empty to use the provider's default
 
 An "Ask Vexa" box then appears in the panel. Without a key it stays hidden.

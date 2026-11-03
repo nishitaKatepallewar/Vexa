@@ -14,7 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import bpy  # noqa: E402
 
 from vexa import tools  # noqa: E402
-from vexa.core.registry import AgentTools  # noqa: E402
+from vexa.core import dispatch  # noqa: E402
+from vexa.core.registry import CHECK, AgentTools  # noqa: E402
 from vexa.core.results import Issue  # noqa: E402
 from vexa.core.scope import current  # noqa: E402
 from helpers import cube, fresh, main, test  # noqa: E402
@@ -43,31 +44,31 @@ class temporary_tools:
     def __exit__(self, *exc):
         for name in TEMP:
             AgentTools._tools.pop(name, None)
-        AgentTools._schemas[:] = [s for s in AgentTools._schemas if s["name"] not in TEMP]
         return False
 
 
 @test
 def check_and_fix_are_registered_and_linked():
     with temporary_tools():
-        check = AgentTools.get_check("_t_flag_all")
-        fix = AgentTools.get_registered("_t_fix_all")
-        assert check.metadata.kind == "check" and check.metadata.fix_name == "_t_fix_all"
-        assert fix.metadata.kind == "fix" and fix.metadata.check_name == "_t_flag_all"
-        assert check.metadata.default_severity == "ERROR"
-        assert AgentTools.get_check("_t_fix_all") is None  # a fix isn't a check
-        assert "_t_flag_all" in [c.name for c in AgentTools.get_checks()]
+        check = AgentTools.get("_t_flag_all", kind=CHECK)
+        fix = AgentTools.get("_t_fix_all")
+        assert check.kind == "check" and check.fix is None and check.check.severity == "ERROR"
+        assert fix.kind == "fix" and fix.check is None and fix.fix.check == "_t_flag_all"
+        assert AgentTools.fix_for("_t_flag_all") is fix
+        assert AgentTools.get("_t_fix_all", kind=CHECK) is None  # a fix isn't a check
+        assert "_t_flag_all" in [c.name for c in AgentTools.all(CHECK)]
+        assert "_t_fix_all" not in [c.name for c in AgentTools.all(CHECK)]
 
 
 @test
-def check_settings_appear_in_the_gemini_schema():
+def check_settings_appear_in_the_tool_spec():
     with temporary_tools():
-        schema = next(s for s in AgentTools.get_schemas() if s["name"] == "_t_flag_all")
-        props = schema["parameters"]["properties"]
-        assert props["limit"]["type"] == "INTEGER" and props["label"]["type"] == "STRING"
-        assert schema["parameters"]["required"] == []  # every setting has a default
-        fix_schema = next(s for s in AgentTools.get_schemas() if s["name"] == "_t_fix_all")
-        assert fix_schema["parameters"]["properties"] == {}  # the fix tool finds issues itself
+        spec = next(s for s in AgentTools.tool_specs() if s.name == "_t_flag_all")
+        props = spec.parameters["properties"]
+        assert props["limit"]["type"] == "integer" and props["label"]["type"] == "string"
+        assert spec.parameters["required"] == []  # every setting has a default
+        fix_spec = next(s for s in AgentTools.tool_specs() if s.name == "_t_fix_all")
+        assert fix_spec.parameters["properties"] == {}  # the fix tool finds issues itself
 
 
 @test
@@ -77,7 +78,7 @@ def check_called_as_a_tool_runs_on_the_selection():
     cube("SM_B", loc=(5, 0, 0)).select_set(False)
     a.select_set(True)
     with temporary_tools():
-        text = AgentTools.get_tool("_t_flag_all")(label="here")
+        text = dispatch.invoke("_t_flag_all", {"label": "here"})
         assert text.startswith("Flag all:") and "SM_A: flagged here" in text and "SM_B" not in text, text
         assert bpy.context.object.mode == "EDIT"  # flagged faces were selected
         bpy.ops.object.mode_set(mode="OBJECT")
@@ -88,7 +89,7 @@ def fix_called_as_a_tool_finds_issues_itself():
     fresh()
     cube("SM_A")
     with temporary_tools():
-        assert AgentTools.get_tool("_t_fix_all")() == "fixed 1 with limit 1"
+        assert dispatch.invoke("_t_fix_all") == "fixed 1 with limit 1"
 
 
 @test
@@ -101,18 +102,18 @@ def fix_for_an_unknown_check_is_rejected():
 
 
 @test
-def reregistering_replaces_the_schema():
+def reregistering_replaces_the_entry():
     with temporary_tools():
-        count = len(AgentTools.get_schemas())
+        count = len(AgentTools.tool_specs())
         with temporary_tools():
-            assert len(AgentTools.get_schemas()) == count
+            assert len(AgentTools.tool_specs()) == count
 
 
 @test
 def import_all_registers_again_after_clear():
     before = {name for name in AgentTools._tools}
     AgentTools.clear()
-    assert not AgentTools.get_schemas()
+    assert not AgentTools.tool_specs()
     tools.import_all()
     after = {name for name in AgentTools._tools}
     assert before == after and "select_hard_edges" in after

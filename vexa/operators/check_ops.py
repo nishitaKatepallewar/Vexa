@@ -8,9 +8,11 @@ from bpy_extras.io_utils import ExportHelper
 from ..core import runner
 from ..core.prefs import get_prefs
 from ..core.presets import get_preset, load_presets
-from ..core.registry import AgentTools
+from ..core.registry import CHECK, AgentTools
+from ..core.results import plural
 from ..core.scope import build_scope
 from ..core.selection import select_result
+from .feedback import redraw_3d_views
 
 # The last run, kept in memory (not saved in the .blend). It holds names, never
 # references to Blender data (see the API docs, "Troubleshooting Errors & Crashes").
@@ -58,10 +60,7 @@ def sync_ui(context) -> None:
         item.fixable = result.fixable
         item.has_objects = bool(result.objects)
     wm.vexa_has_run = bool(STATE["preset_id"])
-    for window in wm.windows:
-        for area in window.screen.areas:
-            if area.type == "VIEW_3D":
-                area.tag_redraw()
+    redraw_3d_views(context)
 
 
 def rerun(context) -> None:
@@ -88,10 +87,6 @@ def fix_one(context, check_name: str) -> str:
     message = runner.apply_fix(result, preset.settings(check_name), scope)
     rerun(context)
     return message
-
-
-def _plural(n: int, word: str) -> str:
-    return f"{n} {word}" + ("" if n == 1 else "s")
 
 
 # ---------- operators ----------
@@ -124,7 +119,7 @@ class VEXA_OT_run_checks(bpy.types.Operator):
         sync_ui(context)
         errors = sum(1 for r in STATE["results"] if r.status == "ERROR")
         warnings = sum(1 for r in STATE["results"] if r.status == "WARNING")
-        self.report({"INFO"}, f"{preset.name}: {_plural(errors, 'error')}, {_plural(warnings, 'warning')}")
+        self.report({"INFO"}, f"{preset.name}: {plural(errors, 'error')}, {plural(warnings, 'warning')}")
         return {"FINISHED"}
 
 
@@ -145,7 +140,7 @@ class VEXA_OT_select_issues(bpy.types.Operator):
         count = select_result(result, context)
         if not count:
             return {"CANCELLED"}
-        self.report({"INFO"}, f"Selected {_plural(count, 'object')}")
+        self.report({"INFO"}, f"Selected {plural(count, 'object')}")
         return {"FINISHED"}
 
 
@@ -160,9 +155,8 @@ class VEXA_OT_fix_check(bpy.types.Operator):
 
     @classmethod
     def description(cls, context, properties):
-        check = AgentTools.get_check(properties.check_id)
-        fix = AgentTools.get_registered(check.metadata.fix_name) if check and check.metadata.fix_name else None
-        return f"{fix.metadata.display_name}, then check again" if fix else cls.__doc__
+        fix = AgentTools.fix_for(properties.check_id)
+        return f"{fix.display_name}, then check again" if fix else cls.__doc__
 
     def execute(self, context):
         ensure_object_mode(context)
@@ -198,18 +192,18 @@ class VEXA_OT_explain_check(bpy.types.Operator):
 
     @classmethod
     def description(cls, context, properties):
-        check = AgentTools.get_check(properties.check_id)
-        return check.metadata.why if check else ""
+        check = AgentTools.get(properties.check_id, kind=CHECK)
+        return check.check.why if check else ""
 
     def execute(self, context):
-        check = AgentTools.get_check(self.check_id)
+        check = AgentTools.get(self.check_id, kind=CHECK)
         result = find_result(self.check_id)
         if not check:
             return {"CANCELLED"}
 
         def draw(menu, _context):
             col = menu.layout.column(align=True)
-            for line in textwrap.wrap(check.metadata.why, 60):
+            for line in textwrap.wrap(check.check.why, 60):
                 col.label(text=line)
             if result and result.issues:
                 col.separator()
@@ -219,7 +213,7 @@ class VEXA_OT_explain_check(bpy.types.Operator):
                 if len(result.issues) > 8:
                     col.label(text=f"…and {len(result.issues) - 8} more")
 
-        context.window_manager.popup_menu(draw, title=check.metadata.display_name, icon="QUESTION")
+        context.window_manager.popup_menu(draw, title=check.display_name, icon="QUESTION")
         return {"FINISHED"}
 
 

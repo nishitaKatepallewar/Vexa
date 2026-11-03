@@ -1,37 +1,30 @@
-"""Generic quick action operator that executes any registered tool."""
+"""The Tools buttons: run any registered tool, check or fix by name."""
 
 import logging
+
 import bpy
 
+from ..core import dispatch
 from ..core.registry import AgentTools
+from .feedback import show_response
 
 logger = logging.getLogger(__name__)
 
+# The tool currently running, so its button can show a clock. Session state only:
+# it isn't saved in the .blend file.
+RUNNING = {"tool": ""}
+
 
 def _execute_tool_async(tool_name: str):
-    """Module-level function to run tool async."""
-    scene = bpy.context.scene
+    """Timer callback: runs the tool after the button has redrawn as busy."""
     try:
-        func = AgentTools.get_tool(tool_name)
-        if not func:
-            scene["vexa_is_loading"] = False
-            scene["vexa_loading_tool"] = ""
-            return
-
-        result = func()
-        scene["vexa_last_response"] = str(result)
-
-        # This runs in a timer, after the operator has finished, so Blender doesn't
-        # record an undo step for it. Push one for fixes so Ctrl+Z can revert them.
-        meta = AgentTools.get_tool_metadata(tool_name)
-        if meta and meta.kind == "fix" and bpy.ops.ed.undo_push.poll():
-            bpy.ops.ed.undo_push(message=meta.display_name)
-    except Exception as e:
+        message = dispatch.invoke(tool_name)
+    except Exception as e:  # noqa: BLE001 - show any tool failure in the panel
         logger.error(f"Quick action error for {tool_name}: {e}")
-        scene["vexa_last_response"] = f"Error: {str(e)}"
+        message = f"Error: {e}"
     finally:
-        scene["vexa_is_loading"] = False
-        scene["vexa_loading_tool"] = ""
+        RUNNING["tool"] = ""
+    show_response(message)
 
 
 class VexaQuickAction(bpy.types.Operator):
@@ -46,16 +39,12 @@ class VexaQuickAction(bpy.types.Operator):
     )
 
     def execute(self, context: bpy.types.Context) -> set[str]:
-        func = AgentTools.get_tool(self.tool_name)
-
-        if not func:
+        if AgentTools.get(self.tool_name) is None:
             self.report({"ERROR"}, f"Tool '{self.tool_name}' not found")
             return {"CANCELLED"}
 
-        scene = context.scene
-        scene["vexa_is_loading"] = True
-        scene["vexa_loading_tool"] = self.tool_name
-        scene["vexa_last_response"] = ""
+        RUNNING["tool"] = self.tool_name
+        show_response("", context)
 
         captured_name = self.tool_name
         bpy.app.timers.register(

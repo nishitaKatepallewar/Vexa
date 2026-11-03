@@ -26,7 +26,7 @@ def every_builtin_preset_runs():
     assert {p.id for p in presets} >= {"general", "unity_asset_store", "fab", "unreal"}
     for p in presets:
         for cid in p.checks:
-            assert AgentTools.get_check(cid), f"{p.id} refers to unknown check {cid}"
+            assert AgentTools.get(cid, kind="check"), f"{p.id} refers to unknown check {cid}"
             runner.check_settings(cid, p.settings(cid))  # raises on an unknown setting
         results = runner.run_preset(p, list(bpy.context.scene.objects))
         assert all(not r.summary.startswith("Check failed") for r in results), [r.summary for r in results]

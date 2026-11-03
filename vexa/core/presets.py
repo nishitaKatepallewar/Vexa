@@ -21,7 +21,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-from .registry import AgentTools
+from .registry import CHECK, AgentTools
 
 BUILTIN_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "presets")
 
@@ -41,8 +41,8 @@ class Preset:
         return {k: v for k, v in self.checks.get(check_name, {}).items() if k != "severity"}
 
     def severity(self, check_name: str) -> str:
-        check = AgentTools.get_check(check_name)
-        default = check.metadata.default_severity if check else "WARNING"
+        check = AgentTools.get(check_name, kind=CHECK)
+        default = check.check.severity if check else "WARNING"
         return str(self.checks.get(check_name, {}).get("severity", default)).upper()
 
 

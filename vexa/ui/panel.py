@@ -4,20 +4,19 @@ Layout (top to bottom):
   Vexa                 target preset, scope, one Check button, results list
     Checks in preset   (collapsed) turn individual checks on/off, see thresholds
     Tools              (collapsed) one-off tools: select hard edges, triangulate…
-    Ask Vexa           only when a Gemini key is set
+    Ask Vexa           only when an API key is set
 """
 
 import bpy
 
 from ..core.prefs import has_ai_key
 from ..core.presets import get_preset
-from ..core.registry import AgentTools
-from ..core.results import overall_status
+from ..core.registry import CHECK, AgentTools
+from ..core.results import overall_status, plural
 from ..core.runner import check_settings
 from ..operators.check_ops import STATE, disabled_checks
+from ..operators.quick_actions import RUNNING
 
-_CACHED_TOOLS_BY_CATEGORY = None
-_CACHED_CATEGORIES = None
 
 STATUS_ICON = {"ERROR": "CANCEL", "WARNING": "ERROR", "INFO": "INFO", "PASS": "CHECKMARK"}
 OVERALL_TEXT = {
@@ -28,32 +27,24 @@ OVERALL_TEXT = {
 }
 
 
-def _reset_tool_cache():
-    """Resets the tool cache. Call this when tools are re-registered."""
-    global _CACHED_TOOLS_BY_CATEGORY, _CACHED_CATEGORIES
-    _CACHED_TOOLS_BY_CATEGORY = None
-    _CACHED_CATEGORIES = None
+
+def _expanded_categories(wm) -> set:
+    return {c for c in wm.vexa_expanded_categories.split(",") if c}
 
 
-def _get_tools_by_category():
-    """Returns cached tools grouped by category."""
-    global _CACHED_TOOLS_BY_CATEGORY, _CACHED_CATEGORIES
-    if _CACHED_TOOLS_BY_CATEGORY is None:
-        _CACHED_TOOLS_BY_CATEGORY = AgentTools.get_tools_by_category()
-        _CACHED_CATEGORIES = AgentTools.get_categories()
-    return _CACHED_TOOLS_BY_CATEGORY, _CACHED_CATEGORIES
+def _quick_actions_by_category() -> dict:
+    groups = {}
+    for tool in AgentTools.all():
+        if tool.is_quick_action:
+            groups.setdefault(tool.category, []).append(tool)
+    return dict(sorted(groups.items()))
 
 
-def _get_expansion_prop(category: str) -> str:
-    return f"vexa_{category.lower().replace(' ', '_')}_expanded"
-
-
-def _is_expanded(scene: bpy.types.Scene, category: str) -> bool:
-    return scene.get(_get_expansion_prop(category), False)
-
-
-def _plural(n: int, word: str) -> str:
-    return f"{n} {word}" + ("" if n == 1 else "s")
+def _draw_response(layout, wm) -> None:
+    if wm.vexa_last_response:
+        box = layout.box()
+        for line in wm.vexa_last_response.splitlines():
+            box.label(text=line)
 
 
 def _results_are_stale(scene) -> bool:
@@ -134,7 +125,7 @@ class VexaMainPanel(bpy.types.Panel):
         head = box.row()
         head.alert = status == "ERROR"
         head.label(
-            text=f"{OVERALL_TEXT[status]} · {_plural(counts['ERROR'], 'error')} · {_plural(counts['WARNING'], 'warning')}",
+            text=f"{OVERALL_TEXT[status]} · {plural(counts['ERROR'], 'error')} · {plural(counts['WARNING'], 'warning')}",
             icon=STATUS_ICON[status],
         )
         if _results_are_stale(scene):
@@ -176,7 +167,7 @@ class VEXA_PT_preset_checks(bpy.types.Panel):
         off = disabled_checks(scene)
         col = layout.column(align=True)
         for check_id in preset.checks:
-            check = AgentTools.get_check(check_id)
+            check = AgentTools.get(check_id, kind=CHECK)
             if not check:
                 continue
             row = col.row(align=True)
@@ -186,7 +177,7 @@ class VEXA_PT_preset_checks(bpy.types.Panel):
             op.check_id = check_id
             sub = row.row()
             sub.active = enabled
-            sub.label(text=check.metadata.display_name)
+            sub.label(text=check.display_name)
             try:
                 params = check_settings(check_id, preset.settings(check_id))
             except ValueError:
@@ -208,14 +199,11 @@ class VEXA_PT_tools(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        scene = context.scene
-        tools_by_cat, categories = _get_tools_by_category()
+        wm = context.window_manager
+        expanded_categories = _expanded_categories(wm)
 
-        for cat in categories:
-            category_tools = [t for t in tools_by_cat.get(cat, []) if t.metadata.is_quick_action]
-            if not category_tools:
-                continue
-            expanded = _is_expanded(scene, cat)
+        for cat, category_tools in _quick_actions_by_category().items():
+            expanded = cat in expanded_categories
             box = layout.box()
             row = box.row(align=True)
             op = row.operator("vexa.toggle_category", text="", emboss=False,
@@ -224,17 +212,13 @@ class VEXA_PT_tools(bpy.types.Panel):
             row.label(text=cat)
             if expanded:
                 for tool in category_tools:
-                    loading = scene.get("vexa_is_loading", False) and scene.get("vexa_loading_tool", "") == tool.name
+                    loading = RUNNING["tool"] == tool.name
                     r = box.row(align=True)
                     op = r.operator("vexa.quick_action", text="", icon="TIME" if loading else "PLAY", emboss=False)
                     op.tool_name = tool.name
-                    r.label(text=tool.metadata.display_name)
+                    r.label(text=tool.display_name)
 
-        response = scene.get("vexa_last_response", "")
-        if response:
-            box = layout.box()
-            for line in str(response).splitlines() or [""]:
-                box.label(text=line)
+        _draw_response(layout, wm)
 
 
 class VEXA_PT_ai(bpy.types.Panel):
@@ -252,15 +236,11 @@ class VEXA_PT_ai(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        scene = context.scene
+        wm = context.window_manager
         row = layout.row(align=True)
-        row.prop(scene, "vexa_prompt", text="")
+        row.prop(wm, "vexa_prompt", text="")
         row.operator("vexa.execute_prompt", text="", icon="PLAY")
-        response = scene.get("vexa_last_response", "")
-        if response:
-            box = layout.box()
-            for line in str(response).splitlines() or [""]:
-                box.label(text=line)
+        _draw_response(layout, wm)
 
 
 class VexaToggleCategory(bpy.types.Operator):
@@ -272,9 +252,10 @@ class VexaToggleCategory(bpy.types.Operator):
     category: bpy.props.StringProperty(name="Category", default="")
 
     def execute(self, context):
-        scene = context.scene
-        prop = _get_expansion_prop(self.category)
-        scene[prop] = not scene.get(prop, False)
+        wm = context.window_manager
+        expanded = _expanded_categories(wm)
+        expanded.symmetric_difference_update({self.category})
+        wm.vexa_expanded_categories = ",".join(sorted(expanded))
         return {"FINISHED"}
 
 

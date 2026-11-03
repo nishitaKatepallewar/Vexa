@@ -41,7 +41,6 @@ class temporary_checks:
     def __exit__(self, *exc):
         for name in TEMP:
             AgentTools._tools.pop(name, None)
-        AgentTools._schemas[:] = [s for s in AgentTools._schemas if s["name"] not in TEMP]
         return False
 
 
