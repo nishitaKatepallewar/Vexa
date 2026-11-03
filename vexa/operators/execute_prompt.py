@@ -1,7 +1,5 @@
 """Operator to execute Vexa prompts (optional AI assistant)."""
 
-import difflib
-import inspect
 import json
 import os
 import subprocess
@@ -10,6 +8,7 @@ import tempfile
 
 import bpy
 
+from ..core import dispatch
 from ..core.llm import WORKER_SCRIPT, create_client
 from ..core.prefs import get_prefs
 from ..core.registry import AgentTools
@@ -35,30 +34,11 @@ def _set_response(text: str) -> None:
     _redraw_panels()
 
 
-def _map_arguments(func, provided_args: dict) -> dict:
-    sig = inspect.signature(func)
-    valid_names = set(sig.parameters.keys())
-    final_args = {}
-
-    for key, value in (provided_args or {}).items():
-        if key in valid_names:
-            final_args[key] = value
-        else:
-            matches = difflib.get_close_matches(key, valid_names, n=1, cutoff=0.7)
-            if matches and matches[0] not in final_args:
-                final_args[matches[0]] = value
-
-    return final_args
-
-
 def _dispatch_tool(func_name: str, args: dict) -> None:
-    tool_func = AgentTools.get_tool(func_name)
-    if not tool_func:
-        _set_response(f"Tool '{func_name}' not found locally.")
-        return
     try:
-        result = tool_func(**_map_arguments(tool_func, args))
-        _set_response(str(result))
+        _set_response(dispatch.invoke(func_name, args))
+    except dispatch.UnknownToolError as e:
+        _set_response(str(e))
     except TypeError as e:
         _set_response(f"Argument Error: {e}")
     except Exception as e:  # noqa: BLE001 - surface any tool failure in the panel
