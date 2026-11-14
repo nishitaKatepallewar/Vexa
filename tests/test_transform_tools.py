@@ -27,6 +27,22 @@ def transforms_detect_and_fix():
 
 
 @test
+def location_checked_only_when_asked():
+    fresh()
+    c = cube(loc=(3, 0, 1))
+    _, r = run("detect_unapplied_transforms")
+    assert r.status == "PASS", r.summary  # location is ignored by default
+    _, r = run("detect_unapplied_transforms", check_location=True)
+    assert r.status == "ERROR" and r.issues[0].message == "Not at world origin", r.issues
+    c.scale = (2, 2, 2)
+    _, r = run("detect_unapplied_transforms", check_location=True)
+    assert r.issues[0].message == "Unapplied scale; not at world origin", r.issues
+    msg, r = fix("detect_unapplied_transforms", check_location=True)
+    assert r.status == "PASS", (msg, r.summary)
+    assert c.location.length < 1e-6 and abs(c.dimensions.x - 4.0) < 1e-5  # moved, scale applied
+
+
+@test
 def negative_scale_not_auto_fixed():
     fresh()
     c = cube()

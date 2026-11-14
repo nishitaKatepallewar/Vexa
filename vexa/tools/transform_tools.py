@@ -16,15 +16,29 @@ def _fmt_vec(v) -> str:
     return "(" + ", ".join(f"{c:.3g}" for c in v) + ")"
 
 
-def _unapplied(obj, check_rotation: bool) -> list:
-    _loc, rot, scale = obj.matrix_basis.decompose()
+def _unapplied(obj, check_rotation: bool, check_location: bool) -> list:
+    """What's wrong with an object's transform, as (label, detail) pairs."""
+    loc, rot, scale = obj.matrix_basis.decompose()
     problems = []
     if any(abs(s - 1.0) > TOL for s in scale):
-        problems.append(f"scale {_fmt_vec(scale)}")
+        problems.append(("scale", f"scale {_fmt_vec(scale)}"))
     if check_rotation and rot.angle > TOL:
         degrees = [math.degrees(a) for a in rot.to_euler()]
-        problems.append(f"rotation {_fmt_vec(degrees)}°")
+        problems.append(("rotation", f"rotation {_fmt_vec(degrees)}°"))
+    if check_location and loc.length > TOL:
+        problems.append(("location", f"location {_fmt_vec(loc)}"))
     return problems
+
+
+def _describe_unapplied(labels: list) -> str:
+    """"Unapplied scale and rotation", "Not at world origin", or both."""
+    parts = []
+    applied = [label for label in labels if label != "location"]
+    if applied:
+        parts.append("Unapplied " + " and ".join(applied))
+    if "location" in labels:
+        parts.append("not at world origin" if parts else "Not at world origin")
+    return "; ".join(parts)
 
 
 # ---------- transforms applied ----------
@@ -37,24 +51,27 @@ def _unapplied(obj, check_rotation: bool) -> list:
     severity="ERROR",
     pass_text="Scale 1, rotation 0",
 )
-def detect_unapplied_transforms(check_rotation: bool = True) -> list:
+def detect_unapplied_transforms(check_rotation: bool = True, check_location: bool = False) -> list:
     """Finds meshes whose scale isn't 1, or whose rotation isn't 0.
 
     check_rotation: also require rotation to be applied, not just scale.
+    check_location: also require the mesh to sit at the world origin (location 0, 0, 0).
     """
     issues = []
     for obj in current().all_meshes:
-        problems = _unapplied(obj, check_rotation)
+        problems = _unapplied(obj, check_rotation, check_location)
         if problems:
-            issues.append(Issue(obj.name, "Unapplied " + " and ".join(p.split()[0] for p in problems),
-                                value="; ".join(problems), target="applied"))
+            issues.append(Issue(obj.name, _describe_unapplied([label for label, _ in problems]),
+                                value="; ".join(detail for _, detail in problems), target="applied"))
     return issues
 
 
 @AgentTools.register_fix("detect_unapplied_transforms", display_name="Apply Transforms")
-def apply_transforms(issues, check_rotation: bool = True) -> str:
+def apply_transforms(issues, check_rotation: bool = True, check_location: bool = False) -> str:
     """Applies scale (and rotation) on meshes with unapplied transforms.
 
+    With check_location, also moves each mesh to the world origin. The mesh moves
+    with its pivot, so the pivot stays where it is on the mesh.
     Skips mirrored meshes and meshes that share data with other objects.
     """
     scene = current().scene
@@ -77,6 +94,9 @@ def apply_transforms(issues, check_rotation: bool = True) -> str:
             if not bpy.ops.object.transform_apply.poll():
                 return "Couldn't apply transforms here. Switch to Object Mode and try again."
             bpy.ops.object.transform_apply(location=False, rotation=check_rotation, scale=True)
+        if check_location:
+            for obj in targets:
+                obj.location = (0.0, 0.0, 0.0)
     msg = f"Applied transforms on {len(targets)} objects"
     if skipped:
         msg += ". Skipped: " + ", ".join(skipped)

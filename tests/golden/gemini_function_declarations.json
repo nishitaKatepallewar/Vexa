@@ -99,13 +99,17 @@
   },
   {
     "name": "detect_unapplied_transforms",
-    "description": "Finds meshes whose scale isn't 1, or whose rotation isn't 0.\n\ncheck_rotation: also require rotation to be applied, not just scale.",
+    "description": "Finds meshes whose scale isn't 1, or whose rotation isn't 0.\n\ncheck_rotation: also require rotation to be applied, not just scale.\ncheck_location: also require the mesh to sit at the world origin (location 0, 0, 0).",
     "parameters": {
       "type": "OBJECT",
       "properties": {
         "check_rotation": {
           "type": "BOOLEAN",
           "description": "Parameter check_rotation"
+        },
+        "check_location": {
+          "type": "BOOLEAN",
+          "description": "Parameter check_location"
         }
       },
       "required": []
@@ -113,7 +117,7 @@
   },
   {
     "name": "apply_transforms",
-    "description": "Applies scale (and rotation) on meshes with unapplied transforms.\n\nSkips mirrored meshes and meshes that share data with other objects.",
+    "description": "Applies scale (and rotation) on meshes with unapplied transforms.\n\nWith check_location, also moves each mesh to the world origin. The mesh moves\nwith its pivot, so the pivot stays where it is on the mesh.\nSkips mirrored meshes and meshes that share data with other objects.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
