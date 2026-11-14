@@ -13,6 +13,10 @@
     "detect_missing_textures": {"severity": "ERROR"},
     "detect_color_space_issues": {"severity": "WARNING"},
     "detect_unused_material_slots": {"severity": "INFO"},
-    "detect_default_names": {"severity": "INFO"}
+    "detect_default_names": {"severity": "INFO"},
+    "detect_flipped_normals": {"severity": "WARNING"},
+    "detect_open_edges": {"severity": "INFO"},
+    "detect_unused_materials": {"severity": "INFO"},
+    "detect_unwanted_objects": {"severity": "INFO"}
   }
 }
