@@ -1,9 +1,10 @@
-"""Geometry checks: n-gons, triangulation, non-planar faces, open edges, flipped normals, vertex colours, intersections, triangle budget."""
+"""Geometry checks: n-gons, triangulation, non-planar faces, open edges, flipped normals, vertex colours, modifiers, intersections, triangle budget."""
 
 import math
 from itertools import combinations
 
 import bmesh
+import bpy
 import numpy as np
 from mathutils.bvhtree import BVHTree
 from mathutils.geometry import distance_point_to_plane
@@ -332,6 +333,38 @@ def remove_color_attributes(issues) -> str:
             attrs.remove(attrs[name])
             removed += 1
     return f"Removed {removed} vertex color attributes"
+
+
+# ---------- unapplied modifiers ----------
+
+def _modifier_types() -> set:
+    return {item.identifier for item in bpy.types.Modifier.bl_rna.properties["type"].enum_items}
+
+
+@AgentTools.register_check(
+    display_name="Detect Unapplied Modifiers",
+    category="Geometry",
+    why="Modifiers are the mesh's construction history. Depending on export settings "
+        "they're dropped or baked differently, so the delivered mesh isn't what you see.",
+    pass_text="None",
+)
+def detect_unapplied_modifiers(ignore: list = ["ARMATURE"]) -> list:  # noqa: B006 - never mutated
+    """Finds meshes with modifiers that haven't been applied.
+
+    ignore: modifier types to allow, e.g. ["ARMATURE", "TRIANGULATE"]. Armature is
+    allowed by default because skinned meshes need it.
+    """
+    allowed = {t.upper() for t in ignore}
+    unknown = allowed - _modifier_types()
+    if unknown:
+        raise ValueError(f"unknown modifier types: {', '.join(sorted(unknown))}")
+    issues = []
+    for obj in current().meshes:
+        names = [m.name for m in obj.modifiers if m.type not in allowed]
+        if names:
+            issues.append(Issue(obj.name, "Unapplied modifiers: " + ", ".join(names),
+                                value=f"{len(names)} modifiers", target="0"))
+    return issues
 
 
 # ---------- intersections ----------

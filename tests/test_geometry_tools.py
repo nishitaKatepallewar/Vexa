@@ -105,6 +105,21 @@ def vertex_colors_detect_and_fix():
 
 
 @test
+def unapplied_modifiers():
+    fresh()
+    c = cube()
+    c.modifiers.new("Bevel", "BEVEL")
+    c.modifiers.new("Rig", "ARMATURE")
+    cube("SM_Clean", loc=(5, 0, 0))
+    _, r = run("detect_unapplied_modifiers")
+    assert [(i.object_name, i.message) for i in r.issues] == [("SM_Crate", "Unapplied modifiers: Bevel")], r.issues
+    _, r = run("detect_unapplied_modifiers", ignore=["ARMATURE", "BEVEL"])
+    assert r.status == "PASS", r.issues
+    _, r = run("detect_unapplied_modifiers", ignore=["BEVVEL"])
+    assert r.summary == "Check failed: unknown modifier types: BEVVEL", r.summary
+
+
+@test
 def intersecting_meshes_found():
     fresh()
     cube("SM_A")

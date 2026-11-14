@@ -138,6 +138,23 @@
     }
   },
   {
+    "name": "detect_unapplied_modifiers",
+    "description": "Finds meshes with modifiers that haven't been applied.\n\nignore: modifier types to allow, e.g. [\"ARMATURE\", \"TRIANGULATE\"]. Armature is\nallowed by default because skinned meshes need it.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "ignore": {
+          "type": "ARRAY",
+          "items": {
+            "type": "STRING"
+          },
+          "description": "Parameter ignore"
+        }
+      },
+      "required": []
+    }
+  },
+  {
     "name": "detect_intersecting_meshes",
     "description": "Finds faces where separate selected meshes intersect each other.",
     "parameters": {
