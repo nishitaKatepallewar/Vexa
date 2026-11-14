@@ -330,9 +330,13 @@ def detect_textured_materials() -> list:
 # ---------- unused materials ----------
 
 def _unused_materials() -> list:
-    """Local materials nothing uses (a fake user doesn't count)."""
+    """Local mesh materials nothing uses (a fake user doesn't count).
+
+    Grease Pencil materials are skipped: they're never part of a mesh delivery, and
+    Blender's default file ships one with no users.
+    """
     return [m for m in bpy.data.materials
-            if m.library is None and m.users - int(m.use_fake_user) == 0]
+            if m.library is None and not m.is_grease_pencil and m.users - int(m.use_fake_user) == 0]
 
 
 @AgentTools.register_check(
@@ -343,7 +347,8 @@ def _unused_materials() -> list:
     pass_text="None",
 )
 def detect_unused_materials() -> list:
-    """Finds materials in the file that no object uses. Checks the whole file, not just the selection."""
+    """Finds materials in the file that no object uses. Checks the whole file, not just
+    the selection, and ignores Grease Pencil materials."""
     names = sorted(m.name for m in _unused_materials())
     if not names:
         return []

@@ -106,11 +106,12 @@ def unused_materials_detect_and_fix():
     c.data.materials.append(bpy.data.materials.new("M_Used"))
     bpy.data.materials.new("M_Orphan")
     bpy.data.materials.new("M_Kept").use_fake_user = True
+    bpy.data.materials.create_gpencil_data(bpy.data.materials.new("GP_Stroke"))
     _, r = run("detect_unused_materials")
     assert r.issues[0].message == "Unused materials: M_Kept, M_Orphan", r.issues
     msg, r = fix("detect_unused_materials")
     assert r.status == "PASS" and msg == "Removed 2 unused materials", (msg, r.summary)
-    assert [m.name for m in bpy.data.materials] == ["M_Used"]
+    assert sorted(m.name for m in bpy.data.materials) == ["GP_Stroke", "M_Used"]
 
 
 if __name__ == "__main__":
