@@ -215,6 +215,29 @@
     }
   },
   {
+    "name": "detect_extra_uv_maps",
+    "description": "Finds meshes with more UV maps than allowed.\n\nmax_uv_maps: how many UV maps a mesh may have (1 means no second UV channel).",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "max_uv_maps": {
+          "type": "INTEGER",
+          "description": "Parameter max_uv_maps"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "remove_extra_uv_maps",
+    "description": "Removes every UV map after the first max_uv_maps on each flagged mesh.\n\nSkips a mesh whose render UV map (the one textures use) would be removed.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "detect_missing_lightmap_uvs",
     "description": "Finds meshes without a lightmap UV channel, or whose lightmap UVs leave 0\u20131.\n\nchannel: index of the lightmap UV map (Unreal uses 1, the second map).",
     "parameters": {

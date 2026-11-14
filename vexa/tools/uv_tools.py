@@ -1,4 +1,4 @@
-"""UV checks: UV map present, lightmap channel present and inside 0–1."""
+"""UV checks: UV map present, no extra UV maps, lightmap channel present and inside 0–1."""
 
 import numpy as np
 
@@ -19,6 +19,56 @@ def detect_missing_uv_maps() -> list:
     """Finds meshes with no UV map at all."""
     return [Issue(o.name, "No UV map", value="0 UV maps", target="≥ 1")
             for o in current().meshes if len(o.data.uv_layers) == 0]
+
+
+@AgentTools.register_check(
+    display_name="Detect Extra UV Maps",
+    category="UVs",
+    why="Extra UV maps are exported as extra UV channels, which cost memory and can "
+        "be picked up by the wrong material or lightmap setting in engine.",
+    pass_text="None",
+)
+def detect_extra_uv_maps(max_uv_maps: int = 1) -> list:
+    """Finds meshes with more UV maps than allowed.
+
+    max_uv_maps: how many UV maps a mesh may have (1 means no second UV channel).
+    """
+    if max_uv_maps < 1:
+        raise ValueError("max_uv_maps must be at least 1")
+    issues = []
+    for obj in current().meshes:
+        layers = obj.data.uv_layers
+        if len(layers) > max_uv_maps:
+            extra = [layer.name for layer in layers[max_uv_maps:]]
+            issues.append(Issue(obj.name, "Extra UV maps: " + ", ".join(extra),
+                                value=f"{len(layers)} UV maps", target=f"≤ {max_uv_maps}"))
+    return issues
+
+
+@AgentTools.register_fix("detect_extra_uv_maps", display_name="Remove Extra UV Maps")
+def remove_extra_uv_maps(issues, max_uv_maps: int = 1) -> str:
+    """Removes every UV map after the first max_uv_maps on each flagged mesh.
+
+    Skips a mesh whose render UV map (the one textures use) would be removed.
+    """
+    scene = current().scene
+    removed, skipped = 0, []
+    for issue in issues:
+        obj = scene.objects.get(issue.object_name)
+        if not obj:
+            continue
+        layers = obj.data.uv_layers
+        extra = [layer.name for layer in layers[max_uv_maps:]]
+        if any(layers[name].active_render for name in extra):
+            skipped.append(obj.name)
+            continue
+        for name in extra:
+            layers.remove(layers[name])
+        removed += len(extra)
+    msg = f"Removed {removed} UV maps"
+    if skipped:
+        msg += ". Skipped (render UV map is an extra one): " + ", ".join(skipped)
+    return msg
 
 
 @AgentTools.register_check(

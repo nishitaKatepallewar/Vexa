@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from helpers import cube, fresh, mesh_from, run, main, test  # noqa: E402
+from helpers import cube, fix, fresh, mesh_from, run, main, test  # noqa: E402
 
 
 @test
@@ -27,6 +27,34 @@ def uv_present_and_lightmap():
     lm.data[0].uv = (1.5, 0.2)
     _, r = run("detect_missing_lightmap_uvs", objs=[c])
     assert "outside 0–1" in r.issues[0].message
+
+
+@test
+def extra_uv_maps_detect_and_fix():
+    fresh()
+    c = cube()  # one UV map
+    _, r = run("detect_extra_uv_maps")
+    assert r.status == "PASS", r.summary
+    c.data.uv_layers.new(name="Lightmap")
+    c.data.uv_layers.new(name="Spare")
+    _, r = run("detect_extra_uv_maps")
+    assert r.status == "WARNING" and r.issues[0].message == "Extra UV maps: Lightmap, Spare", r.issues
+    _, r = run("detect_extra_uv_maps", max_uv_maps=2)
+    assert r.issues[0].message == "Extra UV maps: Spare", r.issues
+    msg, r = fix("detect_extra_uv_maps")
+    assert r.status == "PASS" and msg == "Removed 2 UV maps", (msg, r.summary)
+    assert [layer.name for layer in c.data.uv_layers] == ["UVMap"]
+
+
+@test
+def extra_uv_maps_fix_keeps_the_render_uv_map():
+    fresh()
+    c = cube()
+    c.data.uv_layers.new(name="Painted").active_render = True
+    msg, r = fix("detect_extra_uv_maps")
+    assert "Skipped" in msg and r.status == "WARNING", (msg, r.summary)
+    assert len(c.data.uv_layers) == 2
+
 
 if __name__ == "__main__":
     main(globals())
