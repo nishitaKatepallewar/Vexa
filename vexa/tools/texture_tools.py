@@ -2,6 +2,7 @@
 and format, material slots, unused materials."""
 
 import os
+from contextlib import contextmanager
 
 import bpy
 
@@ -283,23 +284,52 @@ def detect_unused_material_slots() -> list:
     return issues
 
 
+@contextmanager
+def _selected_alone(obj):
+    """Makes obj the only selected and active object, then restores the artist's selection.
+
+    Blender's "remove unused slots" operator acts on the view layer's real selection
+    and ignores a context override, so the object has to be selected for real.
+    """
+    view_layer = bpy.context.view_layer
+    was_selected = [o for o in view_layer.objects if o.select_get()]
+    was_active = view_layer.objects.active
+    for o in was_selected:
+        o.select_set(False)
+    obj.select_set(True)
+    view_layer.objects.active = obj
+    try:
+        yield
+    finally:
+        obj.select_set(False)
+        for o in was_selected:
+            o.select_set(True)
+        view_layer.objects.active = was_active
+
+
 @AgentTools.register_fix("detect_unused_material_slots", display_name="Remove Unused Material Slots")
 def remove_unused_material_slots(issues) -> str:
     """Removes slots no face uses. Empty slots that faces use need a material assigned by hand."""
     scene = current().scene
-    removed = 0
+    view_layer_objects = bpy.context.view_layer.objects
+    removed, skipped = 0, []
     for issue in issues:
         obj = scene.objects.get(issue.object_name)
         if not obj:
             continue
+        if obj.name not in view_layer_objects:  # e.g. in an excluded collection: can't be selected
+            skipped.append(obj.name)
+            continue
         before = len(obj.material_slots)
-        with bpy.context.temp_override(object=obj, active_object=obj,
-                                       selected_objects=[obj], selected_editable_objects=[obj]):
+        with _selected_alone(obj), bpy.context.temp_override(object=obj, active_object=obj):
             if not bpy.ops.object.material_slot_remove_unused.poll():
                 continue
             bpy.ops.object.material_slot_remove_unused()
         removed += before - len(obj.material_slots)
-    return f"Removed {removed} unused slots"
+    msg = f"Removed {removed} unused slots"
+    if skipped:
+        msg += ". Skipped (not in the view layer): " + ", ".join(skipped)
+    return msg
 
 
 # ---------- textured materials ----------

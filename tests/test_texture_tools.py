@@ -72,6 +72,41 @@ def empty_slots():
     assert r.status == "PASS" and len(c.material_slots) == 1
 
 
+@test
+def unused_slots_fixed_on_objects_that_arent_selected():
+    # Scope "Scene" or "Collection" checks objects the artist hasn't selected.
+    fresh()
+    c = cube()
+    for name in ("M_A", None, "M_B"):
+        c.data.materials.append(bpy.data.materials.new(name) if name else None)
+    other = cube("SM_Other", loc=(5, 0, 0))
+    bpy.ops.object.select_all(action="DESELECT")
+    other.select_set(True)
+    bpy.context.view_layer.objects.active = other
+    msg, r = fix("detect_unused_material_slots")
+    assert msg == "Removed 2 unused slots" and r.status == "PASS", (msg, r.summary)
+    assert [s.material.name for s in c.material_slots] == ["M_A"]
+    # The artist's selection is left as it was.
+    assert [o.name for o in bpy.context.selected_objects] == ["SM_Other"]
+    assert bpy.context.view_layer.objects.active == other
+
+
+@test
+def unused_slots_skipped_on_objects_outside_the_view_layer():
+    fresh()
+    hidden = bpy.data.collections.new("Excluded")
+    bpy.context.scene.collection.children.link(hidden)
+    c = cube()
+    bpy.context.scene.collection.objects.unlink(c)
+    hidden.objects.link(c)
+    c.data.materials.append(bpy.data.materials.new("M_A"))
+    c.data.materials.append(None)
+    bpy.context.view_layer.layer_collection.children["Excluded"].exclude = True
+    msg, r = fix("detect_unused_material_slots")
+    assert msg == "Removed 0 unused slots. Skipped (not in the view layer): SM_Crate", msg
+    assert len(c.material_slots) == 2
+
+
 
 @test
 def textured_materials():
