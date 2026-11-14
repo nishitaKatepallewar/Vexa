@@ -158,13 +158,21 @@
   },
   {
     "name": "detect_wrong_unit_scale",
-    "description": "Checks the scene's unit scale against what the target engine expects.\n\nscale_length: the expected Unit Scale (1.0 means 1 Blender unit = 1 metre).",
+    "description": "Checks the scene's unit scale, and optionally its length and rotation units.\n\nscale_length: the expected Unit Scale (1.0 means 1 Blender unit = 1 metre).\nlength_unit: the expected length unit, e.g. \"METERS\" or \"CENTIMETERS\". Empty: not checked.\nrotation_unit: the expected rotation unit, \"DEGREES\" or \"RADIANS\". Empty: not checked.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
         "scale_length": {
           "type": "NUMBER",
           "description": "Parameter scale_length"
+        },
+        "length_unit": {
+          "type": "STRING",
+          "description": "Parameter length_unit"
+        },
+        "rotation_unit": {
+          "type": "STRING",
+          "description": "Parameter rotation_unit"
         }
       },
       "required": []
@@ -172,7 +180,7 @@
   },
   {
     "name": "set_unit_scale",
-    "description": "Sets the scene's unit scale to the expected value.",
+    "description": "Sets the scene's unit scale, and the length and rotation units if given.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

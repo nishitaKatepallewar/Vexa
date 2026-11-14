@@ -1,4 +1,4 @@
-"""Transform checks: applied rotation and scale, negative scale, pivot, unit scale."""
+"""Transform checks: applied transforms, negative scale, pivot, scene units."""
 
 import math
 
@@ -188,29 +188,60 @@ def move_pivots_to_bottom_center(issues) -> str:
     return msg
 
 
-# ---------- unit scale ----------
+# ---------- units ----------
+
+METRIC_UNITS = ("ADAPTIVE", "KILOMETERS", "METERS", "CENTIMETERS", "MILLIMETERS", "MICROMETERS")
+IMPERIAL_UNITS = ("ADAPTIVE", "MILES", "FEET", "INCHES", "THOU")
+ROTATION_UNITS = ("DEGREES", "RADIANS")
+
+
+def _validate_units(length_unit: str, rotation_unit: str) -> None:
+    if length_unit and length_unit not in METRIC_UNITS + IMPERIAL_UNITS:
+        raise ValueError(f"length_unit must be one of {', '.join(dict.fromkeys(METRIC_UNITS + IMPERIAL_UNITS))}")
+    if rotation_unit and rotation_unit not in ROTATION_UNITS:
+        raise ValueError(f"rotation_unit must be {' or '.join(ROTATION_UNITS)}")
+
 
 @AgentTools.register_check(
-    display_name="Detect Wrong Unit Scale",
+    display_name="Detect Wrong Units",
     category="Transforms",
-    why="If the scene's unit scale doesn't match what the engine expects, everything "
-        "exported from this file imports at the wrong size.",
+    why="If the scene's units don't match what the engine or studio expects, everything "
+        "exported from this file imports at the wrong size, and typed values mean something else.",
     pass_text="Matches",
 )
-def detect_wrong_unit_scale(scale_length: float = 1.0) -> list:
-    """Checks the scene's unit scale against what the target engine expects.
+def detect_wrong_unit_scale(scale_length: float = 1.0, length_unit: str = "", rotation_unit: str = "") -> list:
+    """Checks the scene's unit scale, and optionally its length and rotation units.
 
     scale_length: the expected Unit Scale (1.0 means 1 Blender unit = 1 metre).
+    length_unit: the expected length unit, e.g. "METERS" or "CENTIMETERS". Empty: not checked.
+    rotation_unit: the expected rotation unit, "DEGREES" or "RADIANS". Empty: not checked.
     """
+    _validate_units(length_unit, rotation_unit)
     units = current().scene.unit_settings
+    issues = []
     if abs(units.scale_length - scale_length) > 1e-6:
-        return [Issue(None, "Scene unit scale doesn't match the target engine",
-                      value=f"{units.scale_length:g}", target=f"{scale_length:g}")]
-    return []
+        issues.append(Issue(None, "Scene unit scale doesn't match the target engine",
+                            value=f"{units.scale_length:g}", target=f"{scale_length:g}"))
+    if length_unit and units.length_unit != length_unit:
+        issues.append(Issue(None, "Scene length unit doesn't match",
+                            value=units.length_unit.lower(), target=length_unit.lower()))
+    if rotation_unit and units.system_rotation != rotation_unit:
+        issues.append(Issue(None, "Scene rotation unit doesn't match",
+                            value=units.system_rotation.lower(), target=rotation_unit.lower()))
+    return issues
 
 
-@AgentTools.register_fix("detect_wrong_unit_scale", display_name="Set Unit Scale")
-def set_unit_scale(issues, scale_length: float = 1.0) -> str:
-    """Sets the scene's unit scale to the expected value."""
-    current().scene.unit_settings.scale_length = scale_length
-    return f"Set scene unit scale to {scale_length:g}"
+@AgentTools.register_fix("detect_wrong_unit_scale", display_name="Set Units")
+def set_unit_scale(issues, scale_length: float = 1.0, length_unit: str = "", rotation_unit: str = "") -> str:
+    """Sets the scene's unit scale, and the length and rotation units if given."""
+    _validate_units(length_unit, rotation_unit)
+    units = current().scene.unit_settings
+    units.scale_length = scale_length
+    if length_unit and length_unit != "ADAPTIVE":
+        units.system = "METRIC" if length_unit in METRIC_UNITS else "IMPERIAL"
+    if length_unit:
+        units.length_unit = length_unit
+    if rotation_unit:
+        units.system_rotation = rotation_unit
+    return "Set scene units to " + ", ".join(
+        [f"scale {scale_length:g}"] + [u.lower() for u in (length_unit, rotation_unit) if u])

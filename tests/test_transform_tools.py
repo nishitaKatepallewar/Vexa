@@ -69,5 +69,24 @@ def pivot_and_unit_scale():
     _, r = fix("detect_wrong_unit_scale", scale_length=1.0)
     assert r.status == "PASS"
 
+
+@test
+def length_and_rotation_units():
+    fresh()
+    units = bpy.context.scene.unit_settings
+    cm = dict(scale_length=0.01, length_unit="CENTIMETERS", rotation_unit="DEGREES")
+    units.system_rotation = "RADIANS"
+    _, r = run("detect_wrong_unit_scale", **cm)
+    assert len(r.issues) == 3, r.issues  # scale, length and rotation
+    msg, r = fix("detect_wrong_unit_scale", **cm)
+    assert r.status == "PASS", (msg, r.issues)
+    assert abs(units.scale_length - 0.01) < 1e-6
+    assert (units.length_unit, units.system_rotation) == ("CENTIMETERS", "DEGREES")
+    _, r = run("detect_wrong_unit_scale", scale_length=0.01)
+    assert r.status == "PASS"  # units are only checked when asked
+    _, r = run("detect_wrong_unit_scale", length_unit="CENTIMETRES")
+    assert r.summary.startswith("Check failed: length_unit must be one of"), r.summary
+
+
 if __name__ == "__main__":
     main(globals())
