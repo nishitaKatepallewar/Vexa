@@ -432,7 +432,7 @@
   },
   {
     "name": "detect_unused_materials",
-    "description": "Finds materials in the file that no object uses. Checks the whole file, not just the selection.",
+    "description": "Finds materials in the file that no object uses. Checks the whole file, not just\nthe selection, and ignores Grease Pencil materials.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

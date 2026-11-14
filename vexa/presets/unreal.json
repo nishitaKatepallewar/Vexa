@@ -6,9 +6,11 @@
   "checks": {
     "detect_unapplied_transforms": {"severity": "ERROR", "check_rotation": true},
     "detect_negative_scale": {"severity": "ERROR"},
+    "detect_flipped_normals": {"severity": "WARNING"},
     "detect_missing_uv_maps": {"severity": "ERROR"},
     "detect_missing_lightmap_uvs": {"severity": "ERROR", "channel": 1},
     "detect_invalid_collision_meshes": {"severity": "ERROR"},
+    "detect_missing_collision": {"severity": "INFO"},
     "detect_missing_name_prefix": {"severity": "WARNING", "prefix": "SM_"},
     "detect_invalid_name_characters": {"severity": "WARNING", "pattern": "^[A-Za-z0-9_]+$"},
     "detect_missing_textures": {"severity": "ERROR"},
