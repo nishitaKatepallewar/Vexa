@@ -482,6 +482,15 @@
     }
   },
   {
+    "name": "detect_missing_collision",
+    "description": "Finds meshes with no custom collision mesh (UCX_, UBX_, UCP_ or USP_<MeshName>_NN).\n\nCollision meshes are looked up in the whole scene, so selecting only the render\nmesh is enough.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "detect_excess_bone_influences",
     "description": "Finds vertices weighted to more deforming bones than the engine supports.\n\nmax_influences: the most bones allowed to influence one vertex.",
     "parameters": {

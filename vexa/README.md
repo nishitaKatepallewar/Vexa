@@ -96,7 +96,7 @@ Each entry is a `RegisteredTool` with `name`, `func`, `kind`, `display_name`,
 | UVs | `uv_tools.py` | `detect_missing_uv_maps`, `detect_extra_uv_maps`, `detect_flipped_uvs`, `detect_missing_lightmap_uvs` | `remove_extra_uv_maps` |
 | Texture | `texture_tools.py` | `detect_missing_textures`, `detect_color_space_issues`, `detect_invalid_texture_sizes`, `detect_unused_material_slots`, `detect_unused_materials`, `detect_textured_materials` | `fix_color_spaces`, `remove_unused_material_slots`, `remove_unused_materials` |
 | Naming | `naming_tools.py` | `detect_default_names`, `detect_invalid_name_characters`, `detect_missing_name_prefix` | `fix_invalid_names`, `add_name_prefix` |
-| Collision | `collision_tools.py` | `detect_invalid_collision_meshes` | – |
+| Collision | `collision_tools.py` | `detect_invalid_collision_meshes`, `detect_missing_collision` | – |
 | Rigging | `rigging_tools.py` | `detect_excess_bone_influences` | – |
 | Scene | `scene_tools.py` | `detect_unwanted_objects` | – |
 
