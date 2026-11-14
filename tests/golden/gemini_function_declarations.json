@@ -120,6 +120,24 @@
     }
   },
   {
+    "name": "detect_color_attributes",
+    "description": "Finds meshes that still have vertex colour attributes (colour sets).",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "remove_color_attributes",
+    "description": "Removes every vertex colour attribute from the flagged meshes.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "detect_intersecting_meshes",
     "description": "Finds faces where separate selected meshes intersect each other.",
     "parameters": {

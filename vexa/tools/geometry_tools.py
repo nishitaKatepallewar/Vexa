@@ -1,4 +1,4 @@
-"""Geometry checks: n-gons, triangulation, non-planar faces, open edges, flipped normals, intersections, triangle budget."""
+"""Geometry checks: n-gons, triangulation, non-planar faces, open edges, flipped normals, vertex colours, intersections, triangle budget."""
 
 import math
 from itertools import combinations
@@ -296,6 +296,42 @@ def flip_normals_outward(issues) -> str:
         obj.data.update()
         total += len(faces)
     return f"Flipped {total} faces"
+
+
+# ---------- vertex colours ----------
+
+@AgentTools.register_check(
+    display_name="Detect Vertex Colors",
+    category="Geometry",
+    why="Leftover vertex colours (Maya's colour sets) export with the mesh, add memory, "
+        "and can tint or mask the material in engine.",
+    pass_text="None",
+)
+def detect_color_attributes() -> list:
+    """Finds meshes that still have vertex colour attributes (colour sets)."""
+    issues = []
+    for obj in current().meshes:
+        names = [attr.name for attr in obj.data.color_attributes]
+        if names:
+            issues.append(Issue(obj.name, "Vertex colors: " + ", ".join(names),
+                                value=f"{len(names)} attributes", target="0"))
+    return issues
+
+
+@AgentTools.register_fix("detect_color_attributes", display_name="Remove Vertex Colors")
+def remove_color_attributes(issues) -> str:
+    """Removes every vertex colour attribute from the flagged meshes."""
+    scene = current().scene
+    removed = 0
+    for issue in issues:
+        obj = scene.objects.get(issue.object_name)
+        if not obj:
+            continue
+        attrs = obj.data.color_attributes
+        for name in [attr.name for attr in attrs]:
+            attrs.remove(attrs[name])
+            removed += 1
+    return f"Removed {removed} vertex color attributes"
 
 
 # ---------- intersections ----------
