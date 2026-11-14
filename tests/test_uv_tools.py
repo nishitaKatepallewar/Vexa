@@ -56,5 +56,31 @@ def extra_uv_maps_fix_keeps_the_render_uv_map():
     assert len(c.data.uv_layers) == 2
 
 
+
+def _three_quads_with_uvs():
+    """Quad 0 is normal, quad 1 is mirrored on top of quad 0, quad 2 is mirrored on its own."""
+    quad = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+    verts = quad + [(x + 2, y, z) for x, y, z in quad] + [(x + 4, y, z) for x, y, z in quad]
+    obj = mesh_from("SM_Mirrored", verts, [(0, 1, 2, 3), (4, 5, 6, 7), (8, 9, 10, 11)])
+    layer = obj.data.uv_layers.new(name="UVMap")
+    normal = [(0, 0), (1, 0), (1, 1), (0, 1)]
+    mirrored = [(1, 0), (0, 0), (0, 1), (1, 1)]
+    apart = [(u + 2, v) for u, v in mirrored]
+    for loop, uv in zip(range(12), normal + mirrored + apart):
+        layer.data[loop].uv = uv
+    return obj
+
+
+@test
+def flipped_uvs():
+    fresh()
+    cube()  # Blender's default cube UVs aren't flipped
+    _three_quads_with_uvs()
+    _, r = run("detect_flipped_uvs")
+    assert [(i.object_name, i.indices) for i in r.issues] == [("SM_Mirrored", [2])], r.issues
+    _, r = run("detect_flipped_uvs", allow_overlapping=False)
+    assert r.issues[0].indices == [1, 2], r.issues
+
+
 if __name__ == "__main__":
     main(globals())
