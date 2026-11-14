@@ -138,6 +138,23 @@
     }
   },
   {
+    "name": "detect_unapplied_modifiers",
+    "description": "Finds meshes with modifiers that haven't been applied.\n\nignore: modifier types to allow, e.g. [\"ARMATURE\", \"TRIANGULATE\"]. Armature is\nallowed by default because skinned meshes need it.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "ignore": {
+          "type": "ARRAY",
+          "items": {
+            "type": "STRING"
+          },
+          "description": "Parameter ignore"
+        }
+      },
+      "required": []
+    }
+  },
+  {
     "name": "detect_intersecting_meshes",
     "description": "Finds faces where separate selected meshes intersect each other.",
     "parameters": {
@@ -155,6 +172,20 @@
         "max_tris": {
           "type": "INTEGER",
           "description": "Parameter max_tris"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "detect_over_vertex_budget",
+    "description": "Finds meshes whose vertex count exceeds a budget.\n\nmax_verts: the maximum number of vertices allowed per mesh, as counted in\nBlender. Engines count more where UV seams and hard edges split vertices.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "max_verts": {
+          "type": "INTEGER",
+          "description": "Parameter max_verts"
         }
       },
       "required": []
@@ -356,6 +387,23 @@
     }
   },
   {
+    "name": "detect_wrong_texture_format",
+    "description": "Finds textures saved in a file format that isn't allowed.\n\nformats: allowed formats, e.g. [\"PNG\"] or [\"PNG\", \"TGA\"]. Images generated in\nBlender and never saved are skipped.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "formats": {
+          "type": "ARRAY",
+          "items": {
+            "type": "STRING"
+          },
+          "description": "Parameter formats"
+        }
+      },
+      "required": []
+    }
+  },
+  {
     "name": "detect_unused_material_slots",
     "description": "Finds material slots no face uses, and empty slots that faces do use.",
     "parameters": {
@@ -458,6 +506,15 @@
   {
     "name": "detect_invalid_collision_meshes",
     "description": "Finds UCX_ collision meshes that don't match a render mesh name, or aren't convex.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_missing_collision",
+    "description": "Finds meshes with no custom collision mesh (UCX_, UBX_, UCP_ or USP_<MeshName>_NN).\n\nCollision meshes are looked up in the whole scene, so selecting only the render\nmesh is enough.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

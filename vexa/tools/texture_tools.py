@@ -1,5 +1,5 @@
-"""Material and texture checks: missing or unwanted textures, colour space, texture size,
-material slots, unused materials."""
+"""Material and texture checks: missing or unwanted textures, colour space, texture size
+and format, material slots, unused materials."""
 
 import os
 
@@ -199,6 +199,58 @@ def detect_invalid_texture_sizes(power_of_two: bool = True, max_size: int = 8192
                 if problems:
                     issues.append(Issue(obj.name, f"{image.name}: " + ", ".join(problems),
                                         value=f"{image.name} {w}×{h}", target=f"2ⁿ ≤ {max_size}"))
+    return issues
+
+
+# ---------- texture format ----------
+
+# File extensions and Blender's image format names, mapped to one short name.
+_FORMATS = {
+    "png": "PNG", "jpg": "JPEG", "jpeg": "JPEG", "tga": "TGA", "targa": "TGA",
+    "tif": "TIFF", "tiff": "TIFF", "exr": "EXR", "open_exr": "EXR", "bmp": "BMP",
+    "hdr": "HDR", "webp": "WEBP", "dds": "DDS", "psd": "PSD",
+}
+
+
+def _image_format(image) -> str:
+    """The image's file format as a short name, e.g. "PNG", or "" if it has no file."""
+    ext = os.path.splitext(image.filepath)[1].lstrip(".").lower()
+    if ext:
+        return _FORMATS.get(ext, ext.upper())
+    if image.packed_file:
+        return _FORMATS.get(image.file_format.lower(), image.file_format)
+    return ""  # generated in Blender, never saved
+
+
+@AgentTools.register_check(
+    display_name="Detect Wrong Texture Format",
+    category="Texture",
+    why="Pipelines and engines expect specific file formats. Anything else is rejected "
+        "on delivery or imports with the wrong compression or alpha.",
+    pass_text="Correct",
+)
+def detect_wrong_texture_format(formats: list = ["PNG"]) -> list:  # noqa: B006 - never mutated
+    """Finds textures saved in a file format that isn't allowed.
+
+    formats: allowed formats, e.g. ["PNG"] or ["PNG", "TGA"]. Images generated in
+    Blender and never saved are skipped.
+    """
+    allowed = {_FORMATS.get(f.lower(), f.upper()) for f in formats}
+    unknown = allowed - set(_FORMATS.values())
+    if unknown:
+        raise ValueError(f"unknown formats: {', '.join(sorted(unknown))}")
+    issues, seen = [], set()
+    for obj in current().meshes:
+        for mat in _materials(obj):
+            for node in _image_nodes(mat):
+                image = node.image
+                if image is None or image.name in seen:
+                    continue
+                seen.add(image.name)
+                fmt = _image_format(image)
+                if fmt and fmt not in allowed:
+                    issues.append(Issue(obj.name, f"{image.name}: {fmt}", value=f"{image.name} {fmt}",
+                                        target=" or ".join(sorted(allowed))))
     return issues
 
 

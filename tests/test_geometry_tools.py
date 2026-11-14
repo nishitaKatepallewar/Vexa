@@ -105,6 +105,21 @@ def vertex_colors_detect_and_fix():
 
 
 @test
+def unapplied_modifiers():
+    fresh()
+    c = cube()
+    c.modifiers.new("Bevel", "BEVEL")
+    c.modifiers.new("Rig", "ARMATURE")
+    cube("SM_Clean", loc=(5, 0, 0))
+    _, r = run("detect_unapplied_modifiers")
+    assert [(i.object_name, i.message) for i in r.issues] == [("SM_Crate", "Unapplied modifiers: Bevel")], r.issues
+    _, r = run("detect_unapplied_modifiers", ignore=["ARMATURE", "BEVEL"])
+    assert r.status == "PASS", r.issues
+    _, r = run("detect_unapplied_modifiers", ignore=["BEVVEL"])
+    assert r.summary == "Check failed: unknown modifier types: BEVVEL", r.summary
+
+
+@test
 def intersecting_meshes_found():
     fresh()
     cube("SM_A")
@@ -123,6 +138,17 @@ def tri_budget():
     assert r.status == "WARNING" and "1,280" in r.summary, r.summary
     _, r = run("detect_over_triangle_budget", max_tris=5000)
     assert r.status == "PASS"
+
+
+@test
+def vertex_budget():
+    fresh()
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4)  # 642 verts
+    _, r = run("detect_over_vertex_budget", max_verts=500)
+    assert r.status == "WARNING" and r.summary == "642 verts / 500", r.summary
+    _, r = run("detect_over_vertex_budget", max_verts=642)
+    assert r.status == "PASS"
+
 
 if __name__ == "__main__":
     main(globals())

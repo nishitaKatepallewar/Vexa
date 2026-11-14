@@ -4,7 +4,7 @@ import re
 
 from ..core.registry import AgentTools
 from ..core.results import Issue
-from ..core.scope import COLLISION_PREFIXES, current
+from ..core.scope import COLLISION_PREFIXES, current, is_collision_name
 
 
 def _collision_base(name: str):
@@ -50,3 +50,23 @@ def detect_invalid_collision_meshes() -> list:
         if col.name.upper().startswith("UCX_") and not _is_convex(col):
             issues.append(Issue(col.name, "Collision mesh isn't convex", value="concave", target="convex"))
     return issues
+
+
+@AgentTools.register_check(
+    display_name="Detect Missing Collision",
+    category="Collision",
+    why="Without custom collision, the engine generates its own, which is often too "
+        "coarse (players snag on air) or too detailed (slow physics).",
+    pass_text="All have collision",
+)
+def detect_missing_collision() -> list:
+    """Finds meshes with no custom collision mesh (UCX_, UBX_, UCP_ or USP_<MeshName>_NN).
+
+    Collision meshes are looked up in the whole scene, so selecting only the render
+    mesh is enough.
+    """
+    scope = current()
+    covered = {_collision_base(o.name) for o in scope.scene.objects
+               if o.type == "MESH" and is_collision_name(o.name)}
+    return [Issue(obj.name, "No collision mesh", value="none", target=f"UCX_{obj.name}_01")
+            for obj in scope.meshes if obj.name.split(".")[0] not in covered]

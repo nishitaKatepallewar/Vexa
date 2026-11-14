@@ -1,9 +1,11 @@
-"""Geometry checks: n-gons, triangulation, non-planar faces, open edges, flipped normals, vertex colours, intersections, triangle budget."""
+"""Geometry checks: n-gons, triangulation, non-planar faces, open edges, flipped normals,
+vertex colours, modifiers, intersections, triangle and vertex budgets."""
 
 import math
 from itertools import combinations
 
 import bmesh
+import bpy
 import numpy as np
 from mathutils.bvhtree import BVHTree
 from mathutils.geometry import distance_point_to_plane
@@ -334,6 +336,38 @@ def remove_color_attributes(issues) -> str:
     return f"Removed {removed} vertex color attributes"
 
 
+# ---------- unapplied modifiers ----------
+
+def _modifier_types() -> set:
+    return {item.identifier for item in bpy.types.Modifier.bl_rna.properties["type"].enum_items}
+
+
+@AgentTools.register_check(
+    display_name="Detect Unapplied Modifiers",
+    category="Geometry",
+    why="Modifiers are the mesh's construction history. Depending on export settings "
+        "they're dropped or baked differently, so the delivered mesh isn't what you see.",
+    pass_text="None",
+)
+def detect_unapplied_modifiers(ignore: list = ["ARMATURE"]) -> list:  # noqa: B006 - never mutated
+    """Finds meshes with modifiers that haven't been applied.
+
+    ignore: modifier types to allow, e.g. ["ARMATURE", "TRIANGULATE"]. Armature is
+    allowed by default because skinned meshes need it.
+    """
+    allowed = {t.upper() for t in ignore}
+    unknown = allowed - _modifier_types()
+    if unknown:
+        raise ValueError(f"unknown modifier types: {', '.join(sorted(unknown))}")
+    issues = []
+    for obj in current().meshes:
+        names = [m.name for m in obj.modifiers if m.type not in allowed]
+        if names:
+            issues.append(Issue(obj.name, "Unapplied modifiers: " + ", ".join(names),
+                                value=f"{len(names)} modifiers", target="0"))
+    return issues
+
+
 # ---------- intersections ----------
 
 @AgentTools.register_check(
@@ -380,4 +414,28 @@ def detect_over_triangle_budget(max_tris: int = 20000) -> list:
         if tris > max_tris:
             issues.append(Issue(obj.name, "Over triangle budget",
                                 value=f"{tris:,} tris", target=f"{max_tris:,}"))
+    return issues
+
+
+# ---------- vertex budget ----------
+
+@AgentTools.register_check(
+    display_name="Detect Over Vertex Budget",
+    category="Geometry",
+    why="Work orders often set a vertex budget per asset. Going over it means the "
+        "asset is sent back, or a lead has to approve the extra cost.",
+    pass_text="Within budget",
+)
+def detect_over_vertex_budget(max_verts: int = 10000) -> list:
+    """Finds meshes whose vertex count exceeds a budget.
+
+    max_verts: the maximum number of vertices allowed per mesh, as counted in
+    Blender. Engines count more where UV seams and hard edges split vertices.
+    """
+    issues = []
+    for obj in current().meshes:
+        verts = len(obj.data.vertices)
+        if verts > max_verts:
+            issues.append(Issue(obj.name, "Over vertex budget",
+                                value=f"{verts:,} verts", target=f"{max_verts:,}"))
     return issues
