@@ -74,6 +74,16 @@ def empty_slots():
 
 
 @test
+def textured_materials():
+    _crate_with_textures()
+    plain = cube("SM_Plain", loc=(5, 0, 0))
+    plain.data.materials.append(bpy.data.materials.new("M_Plain"))
+    _, r = run("detect_textured_materials")
+    assert [(i.object_name, i.message, i.value) for i in r.issues] == \
+        [("SM_Crate", "Textures on M_Crate", "2 image nodes")], r.issues
+
+
+@test
 def unused_materials_detect_and_fix():
     fresh()
     c = cube()

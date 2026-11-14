@@ -1,4 +1,5 @@
-"""Material and texture checks: missing textures, colour space, texture size, material slots, unused materials."""
+"""Material and texture checks: missing or unwanted textures, colour space, texture size,
+material slots, unused materials."""
 
 import os
 
@@ -247,6 +248,31 @@ def remove_unused_material_slots(issues) -> str:
             bpy.ops.object.material_slot_remove_unused()
         removed += before - len(obj.material_slots)
     return f"Removed {removed} unused slots"
+
+
+# ---------- textured materials ----------
+
+@AgentTools.register_check(
+    display_name="Detect Textured Materials",
+    category="Texture",
+    why="When textures are set up in engine, images left on the delivered material "
+        "add weight to the export and can override the engine-side material.",
+    pass_text="None",
+)
+def detect_textured_materials() -> list:
+    """Finds meshes whose materials use image textures, for deliveries that must have none."""
+    issues = []
+    for obj in current().meshes:
+        textured = {}
+        for mat in _materials(obj):
+            count = sum(1 for _ in _image_nodes(mat))
+            if count:
+                textured[mat.name] = count
+        if textured:
+            total = sum(textured.values())
+            issues.append(Issue(obj.name, "Textures on " + ", ".join(sorted(textured)),
+                                value=f"{total} image nodes", target="0"))
+    return issues
 
 
 # ---------- unused materials ----------

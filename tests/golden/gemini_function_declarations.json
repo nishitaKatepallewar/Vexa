@@ -374,6 +374,15 @@
     }
   },
   {
+    "name": "detect_textured_materials",
+    "description": "Finds meshes whose materials use image textures, for deliveries that must have none.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "detect_unused_materials",
     "description": "Finds materials in the file that no object uses. Checks the whole file, not just the selection.",
     "parameters": {
