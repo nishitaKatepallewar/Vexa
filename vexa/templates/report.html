@@ -11,8 +11,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap">
 <style>
-/* Layout: one column. The verdict, one line of context, then a single list of
-   what to fix, worst first. Passed checks collapse to one line at the end. */
+/* Layout: one column. The verdict, one line of context, then one row per problem,
+   worst first. A row shows how many objects it affects; open it for the objects,
+   grouped by name. Passed checks collapse to one line at the end. */
 :root {
   --bg: #181b1e;
   --line: rgba(255,255,255,0.08);
@@ -28,6 +29,7 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6 var(--mono); }
 .wrap {
   max-width: 880px; margin: 0 auto;
@@ -48,19 +50,43 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6 var(
 .tally { margin: 6px 0 0; }
 .tally span + span::before { content: " · "; color: var(--muted); }
 .tally .INFO { color: var(--info); }
+.fixable { color: var(--muted); margin: 2px 0 0; }
 
+.problems { display: grid; gap: 8px; }
+.toggle-all { justify-self: end; background: none; border: 0; padding: 0; color: var(--muted);
+  font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.toggle-all:hover { color: var(--text); }
 .list { border-top: 1px solid var(--line); }
-.item {
-  display: grid; grid-template-columns: 10px minmax(0, 1fr) minmax(0, auto);
-  gap: 6px 14px; align-items: baseline;
-  padding: 14px 0; border-bottom: 1px solid var(--line);
+.item { border-bottom: 1px solid var(--line); }
+.row {
+  display: grid; grid-template-columns: 10px minmax(0, 1fr) minmax(0, auto) 12px;
+  gap: 4px 14px; align-items: baseline; padding: 14px 0; list-style: none;
 }
+.row::-webkit-details-marker { display: none; }
+details.item > .row { cursor: pointer; }
+details.item > .row:hover .what { color: #fff; }
 .dot { width: 8px; height: 8px; border-radius: 50%; align-self: center; }
 .d-ERROR { background: var(--error); } .d-WARNING { background: var(--warning); } .d-INFO { background: var(--info); }
 .what { font-family: var(--display); font-weight: 700; font-size: 16px; min-width: 0; }
-.where { color: var(--muted); grid-column: 2; min-width: 0; overflow-wrap: anywhere; }
+.where { color: var(--muted); text-align: right; min-width: 0; overflow-wrap: anywhere; }
 .where b { color: var(--text); font-weight: 500; }
-.detail { color: var(--muted); text-align: right; grid-row: 1; grid-column: 3; overflow-wrap: anywhere; }
+.where .val { margin-left: 10px; }
+.chev { color: var(--muted); font-size: 11px; align-self: center; }
+details.item > .row .chev::after { content: "▸"; }
+details.item[open] > .row .chev::after { content: "▾"; }
+
+.body { padding: 0 0 16px 24px; display: grid; gap: 10px; }
+.why { color: var(--muted); margin: 0; max-width: 65ch; }
+.objects { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.objects li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); gap: 14px; }
+.objects .name { overflow-wrap: anywhere; }
+.objects .val { color: var(--muted); text-align: right; overflow-wrap: anywhere; }
+.group > summary { cursor: pointer; list-style: none; display: flex; gap: 10px; }
+.group > summary::-webkit-details-marker { display: none; }
+.group > summary::before { content: "▸"; color: var(--muted); font-size: 11px; }
+.group[open] > summary::before { content: "▾"; }
+.group .n { color: var(--muted); }
+.group .members { color: var(--muted); margin: 4px 0 6px 21px; overflow-wrap: anywhere; }
 
 .passed { color: var(--muted); margin: 0; }
 .passed b { color: var(--pass); font-weight: 500; }
@@ -68,13 +94,17 @@ footer { color: var(--muted); font-size: 12px; }
 footer a { color: var(--muted); }
 
 @media (max-width: 600px) {
-  .item { grid-template-columns: 10px minmax(0, 1fr); }
-  .detail { grid-row: auto; grid-column: 2; text-align: left; }
+  .row { grid-template-columns: 10px minmax(0, 1fr) 12px; }
+  .where { grid-row: 2; grid-column: 2; text-align: left; }
+  .chev { grid-row: 1; grid-column: 3; }
+  .body { padding-left: 0; }
 }
 @media print {
   body { background: #fff; color: #111; }
-  .context, .where, .detail, .passed, footer { color: #555; }
+  .context, .where, .why, .objects .val, .group .n, .group .members, .passed, .fixable, footer { color: #555; }
+  .where b { color: #111; }
   .list, .item { border-color: #ddd; }
+  .toggle-all, .chev { display: none; }
 }
 </style>
 </head>
@@ -86,9 +116,13 @@ footer a { color: var(--muted); }
     <h1 id="verdict"></h1>
     <p class="context" id="context"></p>
     <p class="tally" id="tally"></p>
+    <p class="fixable" id="fixable" hidden></p>
   </header>
 
-  <main id="list" class="list"></main>
+  <main class="problems" id="problems">
+    <button class="toggle-all" id="toggle-all" type="button" hidden>Expand all</button>
+    <div id="list" class="list"></div>
+  </main>
 
   <p class="passed" id="passed"></p>
 
@@ -132,32 +166,135 @@ footer a { color: var(--muted); }
 
   var problems = (R.results || []).filter(function (r) { return r.status !== "PASS"; })
     .sort(function (a, b) { return ORDER[a.status] - ORDER[b.status]; });
+
+  var fixable = problems.filter(function (r) { return r.fixable; }).length;
+  if (fixable) {
+    var fx = document.getElementById("fixable");
+    fx.textContent = (fixable === problems.length ? "All " : fixable + " of " + problems.length + " ") +
+      "can be fixed in one click in Vexa.";
+    fx.hidden = false;
+  }
+
+  var ELEMENT = { FACE: ["face", "faces"], EDGE: ["edge", "edges"], VERT: ["vertex", "vertices"] };
+  var LIST_LIMIT = 12;  // up to this many objects are listed one per line; more are grouped
+
+  function detailOf(issue) { return [issue.value, issue.target].filter(Boolean).join(" → "); }
+
+  // "Neck link 1 • ferrule.001" → "Neck link 1"; "SM_Bolt_07.002" → "SM_Bolt"
+  function groupKey(name) {
+    var m = name.match(/^(.+?)\s+[•·]\s+/);
+    if (m) return m[1];
+    return name.replace(/\.\d{3}$/, "").replace(/[_\s-]*\d+$/, "") || name;
+  }
+  function shortName(name, key) {
+    var rest = name.slice(key.length).replace(/^\s*[•·_\s-]\s*/, "");
+    return rest || name;
+  }
+
+  function objectRows(issues) {
+    var ul = node("ul", "objects");
+    issues.forEach(function (i) {
+      var li = node("li");
+      li.appendChild(node("span", "name", i.object_name || i.message));
+      li.appendChild(node("span", "val", detailOf(i)));
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
+  function groupedNames(names) {
+    var groups = {}, order = [];
+    names.forEach(function (n) {
+      var k = groupKey(n);
+      if (!groups[k]) { groups[k] = []; order.push(k); }
+      groups[k].push(n);
+    });
+    order.sort(function (a, b) { return groups[b].length - groups[a].length; });
+    var wrap = node("div");
+    order.forEach(function (k) {
+      var members = groups[k];
+      if (members.length === 1) { wrap.appendChild(node("div", "name", members[0])); return; }
+      var g = node("details", "group");
+      var s = node("summary");
+      s.appendChild(node("span", null, k));
+      s.appendChild(node("span", "n", "× " + members.length));
+      g.appendChild(s);
+      g.appendChild(node("div", "members", members.map(function (n) { return shortName(n, k); }).join(", ")));
+      wrap.appendChild(g);
+    });
+    return wrap;
+  }
+
   var list = document.getElementById("list");
   problems.forEach(function (r) {
     var issues = r.issues || [];
-    var names = issues.map(function (i) { return i.object_name; }).filter(Boolean);
-    var item = node("div", "item");
-    item.title = r.why || "";
+    var seen = {}, names = [];
+    issues.forEach(function (i) {
+      if (i.object_name && !seen[i.object_name]) { seen[i.object_name] = true; names.push(i.object_name); }
+    });
+    var elements = 0, element = null;
+    issues.forEach(function (i) { if (i.element && i.count) { elements += i.count; element = i.element; } });
+
+    // What the closed row says on the right.
+    var where = node("div", "where");
+    var expandable = true;
+    if (!names.length) {
+      if (issues.length === 1) { where.textContent = detailOf(issues[0]) || "Scene settings"; expandable = false; }
+      else where.textContent = plural(issues.length, "scene setting");
+    } else if (names.length === 1 && issues.length === 1) {
+      where.appendChild(node("b", null, names[0]));
+      var d = detailOf(issues[0]);
+      if (d) where.appendChild(node("span", "val", d));
+      expandable = !!r.why;
+    } else {
+      where.textContent = plural(names.length, "object") + (element
+        ? " · " + elements.toLocaleString() + " " + ELEMENT[element][elements === 1 ? 0 : 1] : "");
+    }
+
+    var item = node(expandable ? "details" : "div", "item");
+    var row = node(expandable ? "summary" : "div", "row");
     var dot = node("span", "dot d-" + r.status);
     dot.setAttribute("aria-label", WORD[r.status]);
-    item.appendChild(dot);
-    item.appendChild(node("div", "what", r.title));
-    var where = node("div", "where");
-    if (names.length) {
-      names.forEach(function (n, k) {
-        if (k) where.appendChild(document.createTextNode(", "));
-        where.appendChild(node("b", null, n));
-      });
-    } else {
-      where.textContent = "Scene settings";
+    row.appendChild(dot);
+    row.appendChild(node("div", "what", r.title));
+    row.appendChild(where);
+    row.appendChild(node("span", "chev"));
+    item.appendChild(row);
+    if (!expandable) item.title = r.why || "";
+
+    if (expandable) {
+      var body = node("div", "body");
+      if (r.why) body.appendChild(node("p", "why", r.why));
+      if (!names.length || names.length <= LIST_LIMIT) {
+        if (names.length !== 1 || issues.length !== 1) body.appendChild(objectRows(issues));
+      } else {
+        body.appendChild(groupedNames(names));
+      }
+      item.appendChild(body);
     }
-    item.appendChild(where);
-    var single = issues.length === 1 ? issues[0] : null;
-    var detail = single ? [single.value, single.target].filter(Boolean).join(" → ") : "";
-    item.appendChild(node("div", "detail", detail));
     list.appendChild(item);
   });
-  if (!problems.length) list.hidden = true;
+  if (!problems.length) document.getElementById("problems").hidden = true;
+
+  // Expand all / Collapse all, and open everything when printing.
+  var toggle = document.getElementById("toggle-all");
+  var all = function () { return Array.prototype.slice.call(document.querySelectorAll("#list details")); };
+  if (all().length > 1) {
+    toggle.hidden = false;
+    toggle.addEventListener("click", function () {
+      var open = toggle.textContent === "Expand all";
+      all().forEach(function (d) { d.open = open; });
+      toggle.textContent = open ? "Collapse all" : "Expand all";
+    });
+  }
+  var wasOpen = [];
+  window.addEventListener("beforeprint", function () {
+    wasOpen = all().map(function (d) { return d.open; });
+    all().forEach(function (d) { d.open = true; });
+  });
+  window.addEventListener("afterprint", function () {
+    all().forEach(function (d, k) { d.open = !!wasOpen[k]; });
+  });
 
   var passed = (R.results || []).filter(function (r) { return r.status === "PASS"; });
   var p = document.getElementById("passed");
