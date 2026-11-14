@@ -1,4 +1,5 @@
-"""Geometry checks: n-gons, triangulation, non-planar faces, open edges, flipped normals, vertex colours, modifiers, intersections, triangle budget."""
+"""Geometry checks: n-gons, triangulation, non-planar faces, open edges, flipped normals,
+vertex colours, modifiers, intersections, triangle and vertex budgets."""
 
 import math
 from itertools import combinations
@@ -413,4 +414,28 @@ def detect_over_triangle_budget(max_tris: int = 20000) -> list:
         if tris > max_tris:
             issues.append(Issue(obj.name, "Over triangle budget",
                                 value=f"{tris:,} tris", target=f"{max_tris:,}"))
+    return issues
+
+
+# ---------- vertex budget ----------
+
+@AgentTools.register_check(
+    display_name="Detect Over Vertex Budget",
+    category="Geometry",
+    why="Work orders often set a vertex budget per asset. Going over it means the "
+        "asset is sent back, or a lead has to approve the extra cost.",
+    pass_text="Within budget",
+)
+def detect_over_vertex_budget(max_verts: int = 10000) -> list:
+    """Finds meshes whose vertex count exceeds a budget.
+
+    max_verts: the maximum number of vertices allowed per mesh, as counted in
+    Blender. Engines count more where UV seams and hard edges split vertices.
+    """
+    issues = []
+    for obj in current().meshes:
+        verts = len(obj.data.vertices)
+        if verts > max_verts:
+            issues.append(Issue(obj.name, "Over vertex budget",
+                                value=f"{verts:,} verts", target=f"{max_verts:,}"))
     return issues

@@ -91,7 +91,7 @@ Each entry is a `RegisteredTool` with `name`, `func`, `kind`, `display_name`,
 | Area | Module | Checks | Fixes |
 | --- | --- | --- | --- |
 | General | `general_tools.py` | – | `count_vertices`, `rename_object`, `select_hard_edges` (tools) |
-| Geometry | `geometry_tools.py` | `detect_ngons`, `detect_untriangulated_meshes`, `detect_nonplanar_faces`, `detect_open_edges`, `detect_flipped_normals`, `detect_color_attributes`, `detect_unapplied_modifiers`, `detect_intersecting_meshes`, `detect_over_triangle_budget` | `triangulate_ngons`, `triangulate_meshes`, `triangulate_nonplanar_faces`, `flip_normals_outward`, `remove_color_attributes` |
+| Geometry | `geometry_tools.py` | `detect_ngons`, `detect_untriangulated_meshes`, `detect_nonplanar_faces`, `detect_open_edges`, `detect_flipped_normals`, `detect_color_attributes`, `detect_unapplied_modifiers`, `detect_intersecting_meshes`, `detect_over_triangle_budget`, `detect_over_vertex_budget` | `triangulate_ngons`, `triangulate_meshes`, `triangulate_nonplanar_faces`, `flip_normals_outward`, `remove_color_attributes` |
 | Transforms | `transform_tools.py` | `detect_unapplied_transforms`, `detect_negative_scale`, `detect_off_center_pivots`, `detect_wrong_unit_scale` | `apply_transforms`, `move_pivots_to_bottom_center`, `set_unit_scale` |
 | UVs | `uv_tools.py` | `detect_missing_uv_maps`, `detect_extra_uv_maps`, `detect_flipped_uvs`, `detect_missing_lightmap_uvs` | `remove_extra_uv_maps` |
 | Texture | `texture_tools.py` | `detect_missing_textures`, `detect_color_space_issues`, `detect_invalid_texture_sizes`, `detect_unused_material_slots`, `detect_unused_materials`, `detect_textured_materials` | `fix_color_spaces`, `remove_unused_material_slots`, `remove_unused_materials` |

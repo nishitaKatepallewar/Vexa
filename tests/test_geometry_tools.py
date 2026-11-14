@@ -139,5 +139,16 @@ def tri_budget():
     _, r = run("detect_over_triangle_budget", max_tris=5000)
     assert r.status == "PASS"
 
+
+@test
+def vertex_budget():
+    fresh()
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4)  # 642 verts
+    _, r = run("detect_over_vertex_budget", max_verts=500)
+    assert r.status == "WARNING" and r.summary == "642 verts / 500", r.summary
+    _, r = run("detect_over_vertex_budget", max_verts=642)
+    assert r.status == "PASS"
+
+
 if __name__ == "__main__":
     main(globals())

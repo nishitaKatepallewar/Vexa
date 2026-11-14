@@ -178,6 +178,20 @@
     }
   },
   {
+    "name": "detect_over_vertex_budget",
+    "description": "Finds meshes whose vertex count exceeds a budget.\n\nmax_verts: the maximum number of vertices allowed per mesh, as counted in\nBlender. Engines count more where UV seams and hard edges split vertices.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "max_verts": {
+          "type": "INTEGER",
+          "description": "Parameter max_verts"
+        }
+      },
+      "required": []
+    }
+  },
+  {
     "name": "detect_unapplied_transforms",
     "description": "Finds meshes whose scale isn't 1, or whose rotation isn't 0.\n\ncheck_rotation: also require rotation to be applied, not just scale.\ncheck_location: also require the mesh to sit at the world origin (location 0, 0, 0).",
     "parameters": {
