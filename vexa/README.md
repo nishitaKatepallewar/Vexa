@@ -48,7 +48,7 @@ vexa/
     runner.py       runs checks with preset settings, applies fixes
     report.py       turns a run into a report and saves it
     results.py      Issue and CheckResult: what every check returns
-    scope.py        which meshes a check looks at (selection, or the runner's scope)
+    scope.py        which objects a check looks at (selection, or the runner's scope)
     selection.py    selects the objects and faces a check flagged
     presets.py      loads preset .json files
     props.py        Blender properties: per-file (scene) and per-session (window manager)
@@ -98,6 +98,7 @@ Each entry is a `RegisteredTool` with `name`, `func`, `kind`, `display_name`,
 | Naming | `naming_tools.py` | `detect_default_names`, `detect_invalid_name_characters`, `detect_missing_name_prefix` | `fix_invalid_names`, `add_name_prefix` |
 | Collision | `collision_tools.py` | `detect_invalid_collision_meshes` | – |
 | Rigging | `rigging_tools.py` | `detect_excess_bone_influences` | – |
+| Scene | `scene_tools.py` | `detect_unwanted_objects` | – |
 
 Naming: check functions start with `detect_` and their labels with "Detect "
 ("Detect N-gons"); results and reports show the label without it ("N-gons").

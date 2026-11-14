@@ -12,6 +12,7 @@ MODULES = (
     "naming_tools",
     "collision_tools",
     "rigging_tools",
+    "scene_tools",
 )
 
 

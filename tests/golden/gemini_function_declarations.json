@@ -391,5 +391,22 @@
       },
       "required": []
     }
+  },
+  {
+    "name": "detect_unwanted_objects",
+    "description": "Finds objects whose type isn't allowed, e.g. cameras, lights and empties.\n\nallowed_types: Blender object types to allow, e.g. [\"MESH\", \"ARMATURE\", \"EMPTY\"].\nEmpties named SOCKET_<name> are always allowed (Unreal sockets).",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "allowed_types": {
+          "type": "ARRAY",
+          "items": {
+            "type": "STRING"
+          },
+          "description": "Parameter allowed_types"
+        }
+      },
+      "required": []
+    }
   }
 ]
