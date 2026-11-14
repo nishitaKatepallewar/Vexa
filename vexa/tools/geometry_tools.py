@@ -1,4 +1,4 @@
-"""Geometry checks: n-gons, triangulation, non-planar faces, intersections, triangle budget."""
+"""Geometry checks: n-gons, triangulation, non-planar faces, open edges, intersections, triangle budget."""
 
 import math
 from itertools import combinations
@@ -173,6 +173,45 @@ def detect_nonplanar_faces(threshold_deg: float = 0.001) -> list:
 def triangulate_nonplanar_faces(issues) -> str:
     """Triangulates every non-planar face in the selected meshes."""
     return f"Triangulated {_triangulate_issues(issues)} non-planar faces"
+
+
+# ---------- open edges ----------
+
+def _edge_face_counts(mesh) -> np.ndarray:
+    """How many faces use each edge."""
+    loop_edges = np.zeros(len(mesh.loops), dtype=np.int32)
+    mesh.loops.foreach_get("edge_index", loop_edges)
+    return np.bincount(loop_edges, minlength=len(mesh.edges))
+
+
+@AgentTools.register_check(
+    display_name="Detect Open Edges",
+    category="Geometry",
+    why="Holes and gaps show as see-through cracks in engine, break baking and "
+        "collision, and an uncapped base is visible from low camera angles.",
+    pass_text="Closed",
+    is_quick_action=True,
+)
+def detect_open_edges() -> list:
+    """Finds holes and gaps: edges used by one face, edges shared by more than two
+    faces, and loose edges with no face at all.
+
+    Turn this check off for assets that are open on purpose, such as planes and cards.
+    """
+    issues = []
+    for obj in current().meshes:
+        counts = _edge_face_counts(obj.data)
+        idx = np.nonzero(counts != 2)[0].tolist()
+        if not idx:
+            continue
+        parts = []
+        for label, mask in (("open", counts == 1), ("non-manifold", counts > 2), ("loose", counts == 0)):
+            n = int(np.count_nonzero(mask))
+            if n:
+                parts.append(f"{n} {label}")
+        issues.append(Issue(obj.name, ", ".join(parts) + " edges", value=f"{len(idx)} edges",
+                            target="0", element="EDGE", indices=idx))
+    return issues
 
 
 # ---------- intersections ----------
