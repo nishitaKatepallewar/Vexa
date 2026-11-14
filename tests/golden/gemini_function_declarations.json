@@ -374,6 +374,24 @@
     }
   },
   {
+    "name": "detect_unused_materials",
+    "description": "Finds materials in the file that no object uses. Checks the whole file, not just the selection.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "remove_unused_materials",
+    "description": "Deletes every material in the file that nothing uses, including ones with a fake user.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "detect_default_names",
     "description": "Finds meshes still using Blender's default names (Cube.001, Plane, \u2026).",
     "parameters": {
