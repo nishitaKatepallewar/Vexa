@@ -52,6 +52,24 @@
     }
   },
   {
+    "name": "detect_untriangulated_meshes",
+    "description": "Finds quads and n-gons in meshes that must be delivered fully triangulated.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "triangulate_meshes",
+    "description": "Triangulates every quad and n-gon in the selected meshes.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "detect_nonplanar_faces",
     "description": "Finds quads and n-gons whose vertices don't lie on one plane.\n\nthreshold_deg: how far (in degrees) a vertex may bend out of the face's plane.",
     "parameters": {
