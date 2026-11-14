@@ -93,6 +93,33 @@
     }
   },
   {
+    "name": "detect_open_edges",
+    "description": "Finds holes and gaps: edges used by one face, edges shared by more than two\nfaces, and loose edges with no face at all.\n\nTurn this check off for assets that are open on purpose, such as planes and cards.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_flipped_normals",
+    "description": "Finds faces whose normals point into the mesh instead of out of it.\n\nOnly closed parts of a mesh are checked: on an open surface, such as a plane,\nneither side is \"outside\".",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "flip_normals_outward",
+    "description": "Flips the faces that point inwards, so every face points out of the mesh.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "detect_intersecting_meshes",
     "description": "Finds faces where separate selected meshes intersect each other.",
     "parameters": {

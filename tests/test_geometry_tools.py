@@ -45,6 +45,53 @@ def nonplanar_quad():
 
 
 @test
+def open_edges():
+    fresh()
+    cube("SM_Closed")
+    mesh_from("SM_Plane", [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)], [(0, 1, 2, 3)])
+    # Three faces sharing one edge, plus a loose edge.
+    fin = mesh_from("SM_Fin", [(0, 0, 0), (0, 0, 1), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (5, 5, 5)],
+                    [(0, 1, 2), (0, 1, 3), (0, 1, 4)])
+    fin.data.edges.add(1)
+    fin.data.edges[-1].vertices = (4, 5)
+    _, r = run("detect_open_edges")
+    by_name = {i.object_name: i for i in r.issues}
+    assert sorted(by_name) == ["SM_Fin", "SM_Plane"], by_name
+    assert by_name["SM_Plane"].message == "4 open edges", by_name["SM_Plane"]
+    assert by_name["SM_Fin"].message == "6 open, 1 non-manifold, 1 loose edges", by_name["SM_Fin"]
+    assert by_name["SM_Plane"].element == "EDGE" and len(by_name["SM_Plane"].indices) == 4
+
+
+def _flip(obj, face_indices):
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.faces.ensure_lookup_table()
+    bmesh.ops.reverse_faces(bm, faces=[bm.faces[i] for i in face_indices])
+    bm.to_mesh(obj.data)
+    bm.free()
+
+
+@test
+def flipped_normals_detect_and_fix():
+    fresh()
+    good = cube("SM_Good")
+    one = cube("SM_OneFlipped", loc=(5, 0, 0))
+    _flip(one, [2])
+    inside_out = cube("SM_InsideOut", loc=(10, 0, 0))
+    _flip(inside_out, range(6))
+    plane = mesh_from("SM_PlaneDown", [(0, 0, 0), (0, 1, 0), (1, 1, 0), (1, 0, 0)], [(0, 1, 2, 3)])
+    assert plane.data.polygons[0].normal.z < 0  # open surface: not judged
+    _, r = run("detect_flipped_normals")
+    found = {i.object_name: i.indices for i in r.issues}
+    assert r.status == "ERROR" and found == {"SM_OneFlipped": [2], "SM_InsideOut": list(range(6))}, found
+    msg, r = fix("detect_flipped_normals")
+    assert r.status == "PASS" and msg == "Flipped 7 faces", (msg, r.summary)
+    for obj in (good, one, inside_out):  # every face now points away from the centre
+        assert all(p.normal.dot(p.center) > 0 for p in obj.data.polygons), obj.name
+
+
+@test
 def intersecting_meshes_found():
     fresh()
     cube("SM_A")

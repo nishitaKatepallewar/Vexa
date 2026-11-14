@@ -1,4 +1,4 @@
-"""Geometry checks: n-gons, triangulation, non-planar faces, intersections, triangle budget."""
+"""Geometry checks: n-gons, triangulation, non-planar faces, open edges, flipped normals, intersections, triangle budget."""
 
 import math
 from itertools import combinations
@@ -173,6 +173,129 @@ def detect_nonplanar_faces(threshold_deg: float = 0.001) -> list:
 def triangulate_nonplanar_faces(issues) -> str:
     """Triangulates every non-planar face in the selected meshes."""
     return f"Triangulated {_triangulate_issues(issues)} non-planar faces"
+
+
+# ---------- open edges ----------
+
+def _edge_face_counts(mesh) -> np.ndarray:
+    """How many faces use each edge."""
+    loop_edges = np.zeros(len(mesh.loops), dtype=np.int32)
+    mesh.loops.foreach_get("edge_index", loop_edges)
+    return np.bincount(loop_edges, minlength=len(mesh.edges))
+
+
+@AgentTools.register_check(
+    display_name="Detect Open Edges",
+    category="Geometry",
+    why="Holes and gaps show as see-through cracks in engine, break baking and "
+        "collision, and an uncapped base is visible from low camera angles.",
+    pass_text="Closed",
+    is_quick_action=True,
+)
+def detect_open_edges() -> list:
+    """Finds holes and gaps: edges used by one face, edges shared by more than two
+    faces, and loose edges with no face at all.
+
+    Turn this check off for assets that are open on purpose, such as planes and cards.
+    """
+    issues = []
+    for obj in current().meshes:
+        counts = _edge_face_counts(obj.data)
+        idx = np.nonzero(counts != 2)[0].tolist()
+        if not idx:
+            continue
+        parts = []
+        for label, mask in (("open", counts == 1), ("non-manifold", counts > 2), ("loose", counts == 0)):
+            n = int(np.count_nonzero(mask))
+            if n:
+                parts.append(f"{n} {label}")
+        issues.append(Issue(obj.name, ", ".join(parts) + " edges", value=f"{len(idx)} edges",
+                            target="0", element="EDGE", indices=idx))
+    return issues
+
+
+# ---------- flipped normals ----------
+
+def _closed_islands(bm) -> list:
+    """Groups of connected faces whose every edge is shared by exactly two faces."""
+    seen, islands = set(), []
+    for start in bm.faces:
+        if start.index in seen:
+            continue
+        island, stack, closed = [], [start], True
+        seen.add(start.index)
+        while stack:
+            face = stack.pop()
+            island.append(face)
+            for edge in face.edges:
+                if len(edge.link_faces) != 2:
+                    closed = False
+                for other in edge.link_faces:
+                    if other.index not in seen:
+                        seen.add(other.index)
+                        stack.append(other)
+        if closed:
+            islands.append(island)
+    return islands
+
+
+def _inward_faces(mesh) -> list:
+    """Indices of faces on closed parts of the mesh that point inwards."""
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.faces.ensure_lookup_table()
+    before = {f.index: f.normal.copy() for f in bm.faces}
+    inward = []
+    for island in _closed_islands(bm):
+        bmesh.ops.recalc_face_normals(bm, faces=island)
+        inward += [f.index for f in island if f.normal.dot(before[f.index]) < 0]
+    bm.free()
+    return sorted(inward)
+
+
+@AgentTools.register_check(
+    display_name="Detect Flipped Normals",
+    category="Geometry",
+    why="Faces pointing inwards are invisible in engine (backface culling) or shade "
+        "dark, and they break normal map bakes.",
+    severity="ERROR",
+    pass_text="All outward",
+    is_quick_action=True,
+)
+def detect_flipped_normals() -> list:
+    """Finds faces whose normals point into the mesh instead of out of it.
+
+    Only closed parts of a mesh are checked: on an open surface, such as a plane,
+    neither side is "outside".
+    """
+    issues = []
+    for obj in current().meshes:
+        idx = _inward_faces(obj.data)
+        if idx:
+            issues.append(Issue(obj.name, f"{len(idx)} faces point inwards", value=f"{len(idx)} faces",
+                                target="0", element="FACE", indices=idx))
+    return issues
+
+
+@AgentTools.register_fix("detect_flipped_normals", display_name="Flip Normals Outward", is_quick_action=True)
+def flip_normals_outward(issues) -> str:
+    """Flips the faces that point inwards, so every face points out of the mesh."""
+    scene = current().scene
+    total = 0
+    for issue in issues:
+        obj = scene.objects.get(issue.object_name)
+        if not obj:
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        bm.faces.ensure_lookup_table()
+        faces = [bm.faces[i] for i in issue.indices if i < len(bm.faces)]
+        bmesh.ops.reverse_faces(bm, faces=faces)
+        bm.to_mesh(obj.data)
+        bm.free()
+        obj.data.update()
+        total += len(faces)
+    return f"Flipped {total} faces"
 
 
 # ---------- intersections ----------
