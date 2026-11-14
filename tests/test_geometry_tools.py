@@ -92,6 +92,19 @@ def flipped_normals_detect_and_fix():
 
 
 @test
+def vertex_colors_detect_and_fix():
+    fresh()
+    c = cube()
+    cube("SM_Clean", loc=(5, 0, 0))
+    c.data.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
+    c.data.color_attributes.new("Mask", "BYTE_COLOR", "CORNER")
+    _, r = run("detect_color_attributes")
+    assert [(i.object_name, i.message) for i in r.issues] == [("SM_Crate", "Vertex colors: Col, Mask")], r.issues
+    msg, r = fix("detect_color_attributes")
+    assert r.status == "PASS" and msg == "Removed 2 vertex color attributes", (msg, r.summary)
+
+
+@test
 def intersecting_meshes_found():
     fresh()
     cube("SM_A")

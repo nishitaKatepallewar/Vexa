@@ -1,4 +1,5 @@
-"""Material and texture checks: missing textures, colour space, texture size, material slots."""
+"""Material and texture checks: missing or unwanted textures, colour space, texture size,
+material slots, unused materials."""
 
 import os
 
@@ -247,3 +248,62 @@ def remove_unused_material_slots(issues) -> str:
             bpy.ops.object.material_slot_remove_unused()
         removed += before - len(obj.material_slots)
     return f"Removed {removed} unused slots"
+
+
+# ---------- textured materials ----------
+
+@AgentTools.register_check(
+    display_name="Detect Textured Materials",
+    category="Texture",
+    why="When textures are set up in engine, images left on the delivered material "
+        "add weight to the export and can override the engine-side material.",
+    pass_text="None",
+)
+def detect_textured_materials() -> list:
+    """Finds meshes whose materials use image textures, for deliveries that must have none."""
+    issues = []
+    for obj in current().meshes:
+        textured = {}
+        for mat in _materials(obj):
+            count = sum(1 for _ in _image_nodes(mat))
+            if count:
+                textured[mat.name] = count
+        if textured:
+            total = sum(textured.values())
+            issues.append(Issue(obj.name, "Textures on " + ", ".join(sorted(textured)),
+                                value=f"{total} image nodes", target="0"))
+    return issues
+
+
+# ---------- unused materials ----------
+
+def _unused_materials() -> list:
+    """Local materials nothing uses (a fake user doesn't count)."""
+    return [m for m in bpy.data.materials
+            if m.library is None and m.users - int(m.use_fake_user) == 0]
+
+
+@AgentTools.register_check(
+    display_name="Detect Unused Materials",
+    category="Texture",
+    why="Materials nothing uses are leftovers that clutter the delivered file and "
+        "can end up imported into the engine as extra assets.",
+    pass_text="None",
+)
+def detect_unused_materials() -> list:
+    """Finds materials in the file that no object uses. Checks the whole file, not just the selection."""
+    names = sorted(m.name for m in _unused_materials())
+    if not names:
+        return []
+    more = "…" if len(names) > 5 else ""
+    return [Issue(None, "Unused materials: " + ", ".join(names[:5]) + more,
+                  value=f"{len(names)} materials", target="0")]
+
+
+@AgentTools.register_fix("detect_unused_materials", display_name="Remove Unused Materials")
+def remove_unused_materials(issues) -> str:
+    """Deletes every material in the file that nothing uses, including ones with a fake user."""
+    unused = _unused_materials()
+    for mat in unused:
+        bpy.data.materials.remove(mat)
+    return f"Removed {len(unused)} unused materials"

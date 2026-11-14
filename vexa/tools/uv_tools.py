@@ -1,6 +1,7 @@
-"""UV checks: UV map present, no extra UV maps, lightmap channel present and inside 0–1."""
+"""UV checks: UV map present, no extra UV maps, no flipped UVs, lightmap channel present and inside 0–1."""
 
 import numpy as np
+from mathutils.bvhtree import BVHTree
 
 from ..core.registry import AgentTools
 from ..core.results import Issue
@@ -70,6 +71,80 @@ def remove_extra_uv_maps(issues, max_uv_maps: int = 1) -> str:
         msg += ". Skipped (render UV map is an extra one): " + ", ".join(skipped)
     return msg
 
+
+# ---------- flipped UVs ----------
+
+def _render_uv_layer(mesh):
+    """The UV map textures render with, or None."""
+    layers = mesh.uv_layers
+    return next((layer for layer in layers if layer.active_render), layers[0] if len(layers) else None)
+
+
+def _uv_signed_areas(mesh, uv: np.ndarray) -> np.ndarray:
+    """Signed area of every face in UV space. Negative means mirrored (flipped)."""
+    n_loops = len(mesh.loops)
+    starts = np.zeros(len(mesh.polygons), dtype=np.int64)
+    totals = np.zeros(len(mesh.polygons), dtype=np.int64)
+    mesh.polygons.foreach_get("loop_start", starts)
+    mesh.polygons.foreach_get("loop_total", totals)
+    face_of_loop = np.repeat(np.arange(len(starts)), totals)
+    nxt = np.arange(n_loops) + 1
+    wrap = nxt == (starts + totals)[face_of_loop]
+    nxt[wrap] = starts[face_of_loop[wrap]]
+    cross = uv[:, 0] * uv[nxt, 1] - uv[nxt, 0] * uv[:, 1]
+    return 0.5 * np.bincount(face_of_loop, weights=cross, minlength=len(starts))
+
+
+def _flipped_uv_faces(mesh, allow_overlapping: bool) -> list:
+    layer = _render_uv_layer(mesh)
+    if layer is None or not len(mesh.polygons):
+        return []
+    uv = np.zeros(len(mesh.loops) * 2, dtype=np.float32)
+    layer.data.foreach_get("uv", uv)
+    uv = uv.reshape(-1, 2).astype(np.float64)
+    areas = _uv_signed_areas(mesh, uv)
+    flipped = np.nonzero(areas < -1e-12)[0].tolist()
+    if not (flipped and allow_overlapping):
+        return flipped
+    # A mirrored shell stacked on top of an unflipped one is fine (shared texture
+    # space). Keep only flipped faces whose centre isn't covered by an unflipped face.
+    unflipped = [p for p in mesh.polygons if areas[p.index] > 1e-12]
+    if not unflipped:
+        return flipped
+    points = [(u, v, 0.0) for u, v in uv]
+    tree = BVHTree.FromPolygons(points, [tuple(p.loop_indices) for p in unflipped])
+    alone = []
+    for index in flipped:
+        loops = list(mesh.polygons[index].loop_indices)
+        cu, cv = uv[loops].mean(axis=0)
+        if tree.ray_cast((cu, cv, 1.0), (0.0, 0.0, -1.0))[0] is None:
+            alone.append(index)
+    return alone
+
+
+@AgentTools.register_check(
+    display_name="Detect Flipped UVs",
+    category="UVs",
+    why="Mirrored UVs make normal maps light the wrong way and break baking, unless "
+        "they're a mirrored copy stacked on the original to share texture space.",
+    pass_text="None",
+)
+def detect_flipped_uvs(allow_overlapping: bool = True) -> list:
+    """Finds faces whose UVs are mirrored (shown red in Maya's UV editor).
+
+    allow_overlapping: allow a mirrored face that sits on top of an unflipped one,
+    e.g. a symmetric shell stacked onto its other half.
+    """
+    issues = []
+    for obj in current().meshes:
+        idx = _flipped_uv_faces(obj.data, allow_overlapping)
+        if idx:
+            issues.append(Issue(obj.name, f"{len(idx)} faces have flipped UVs", value=f"{len(idx)} faces",
+                                target="0", element="FACE", indices=idx))
+    return issues
+
+
+# ---------- lightmap ----------
 
 @AgentTools.register_check(
     display_name="Detect Lightmap UV Issues",
