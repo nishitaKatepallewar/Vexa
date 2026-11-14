@@ -22,6 +22,18 @@ def ngons_detect_and_fix():
 
 
 @test
+def untriangulated_detect_and_fix():
+    fresh()
+    c = cube()  # 6 quads
+    mesh_from("SM_Tri", [(0, 0, 0), (1, 0, 0), (1, 1, 0)], [(0, 1, 2)])
+    _, r = run("detect_untriangulated_meshes")
+    assert [i.object_name for i in r.issues] == ["SM_Crate"] and len(r.issues[0].indices) == 6, r.issues
+    msg, r = fix("detect_untriangulated_meshes")
+    assert r.status == "PASS" and msg == "Triangulated 6 faces", (msg, r.summary)
+    assert len(c.data.polygons) == 12
+
+
+@test
 def nonplanar_quad():
     fresh()
     mesh_from("SM_Bent", [(0, 0, 0), (1, 0, 0), (1, 1, 0.3), (0, 1, 0)], [(0, 1, 2, 3)])

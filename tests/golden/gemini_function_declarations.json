@@ -52,6 +52,24 @@
     }
   },
   {
+    "name": "detect_untriangulated_meshes",
+    "description": "Finds quads and n-gons in meshes that must be delivered fully triangulated.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "triangulate_meshes",
+    "description": "Triangulates every quad and n-gon in the selected meshes.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "detect_nonplanar_faces",
     "description": "Finds quads and n-gons whose vertices don't lie on one plane.\n\nthreshold_deg: how far (in degrees) a vertex may bend out of the face's plane.",
     "parameters": {
@@ -99,13 +117,17 @@
   },
   {
     "name": "detect_unapplied_transforms",
-    "description": "Finds meshes whose scale isn't 1, or whose rotation isn't 0.\n\ncheck_rotation: also require rotation to be applied, not just scale.",
+    "description": "Finds meshes whose scale isn't 1, or whose rotation isn't 0.\n\ncheck_rotation: also require rotation to be applied, not just scale.\ncheck_location: also require the mesh to sit at the world origin (location 0, 0, 0).",
     "parameters": {
       "type": "OBJECT",
       "properties": {
         "check_rotation": {
           "type": "BOOLEAN",
           "description": "Parameter check_rotation"
+        },
+        "check_location": {
+          "type": "BOOLEAN",
+          "description": "Parameter check_location"
         }
       },
       "required": []
@@ -113,7 +135,7 @@
   },
   {
     "name": "apply_transforms",
-    "description": "Applies scale (and rotation) on meshes with unapplied transforms.\n\nSkips mirrored meshes and meshes that share data with other objects.",
+    "description": "Applies scale (and rotation) on meshes with unapplied transforms.\n\nWith check_location, also moves each mesh to the world origin. The mesh moves\nwith its pivot, so the pivot stays where it is on the mesh.\nSkips mirrored meshes and meshes that share data with other objects.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -154,13 +176,21 @@
   },
   {
     "name": "detect_wrong_unit_scale",
-    "description": "Checks the scene's unit scale against what the target engine expects.\n\nscale_length: the expected Unit Scale (1.0 means 1 Blender unit = 1 metre).",
+    "description": "Checks the scene's unit scale, and optionally its length and rotation units.\n\nscale_length: the expected Unit Scale (1.0 means 1 Blender unit = 1 metre).\nlength_unit: the expected length unit, e.g. \"METERS\" or \"CENTIMETERS\". Empty: not checked.\nrotation_unit: the expected rotation unit, \"DEGREES\" or \"RADIANS\". Empty: not checked.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
         "scale_length": {
           "type": "NUMBER",
           "description": "Parameter scale_length"
+        },
+        "length_unit": {
+          "type": "STRING",
+          "description": "Parameter length_unit"
+        },
+        "rotation_unit": {
+          "type": "STRING",
+          "description": "Parameter rotation_unit"
         }
       },
       "required": []
@@ -168,7 +198,7 @@
   },
   {
     "name": "set_unit_scale",
-    "description": "Sets the scene's unit scale to the expected value.",
+    "description": "Sets the scene's unit scale, and the length and rotation units if given.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -178,6 +208,29 @@
   {
     "name": "detect_missing_uv_maps",
     "description": "Finds meshes with no UV map at all.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "detect_extra_uv_maps",
+    "description": "Finds meshes with more UV maps than allowed.\n\nmax_uv_maps: how many UV maps a mesh may have (1 means no second UV channel).",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "max_uv_maps": {
+          "type": "INTEGER",
+          "description": "Parameter max_uv_maps"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "remove_extra_uv_maps",
+    "description": "Removes every UV map after the first max_uv_maps on each flagged mesh.\n\nSkips a mesh whose render UV map (the one textures use) would be removed.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -334,6 +387,23 @@
         "max_influences": {
           "type": "INTEGER",
           "description": "Parameter max_influences"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "detect_unwanted_objects",
+    "description": "Finds objects whose type isn't allowed, e.g. cameras, lights and empties.\n\nallowed_types: Blender object types to allow, e.g. [\"MESH\", \"ARMATURE\", \"EMPTY\"].\nEmpties named SOCKET_<name> are always allowed (Unreal sockets).",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "allowed_types": {
+          "type": "ARRAY",
+          "items": {
+            "type": "STRING"
+          },
+          "description": "Parameter allowed_types"
         }
       },
       "required": []

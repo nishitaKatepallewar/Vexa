@@ -1,4 +1,4 @@
-"""Geometry checks: n-gons, non-planar faces, intersections, triangle budget."""
+"""Geometry checks: n-gons, triangulation, non-planar faces, intersections, triangle budget."""
 
 import math
 from itertools import combinations
@@ -113,6 +113,33 @@ def detect_ngons() -> list:
 def triangulate_ngons(issues) -> str:
     """Triangulates every n-gon in the selected meshes."""
     return f"Triangulated {_triangulate_issues(issues)} n-gons"
+
+
+# ---------- untriangulated meshes ----------
+
+@AgentTools.register_check(
+    display_name="Detect Untriangulated Meshes",
+    category="Geometry",
+    why="If the engine triangulates on import, it can split quads along a different "
+        "diagonal than your baker did, which breaks shading and normal maps.",
+    pass_text="All triangles",
+    is_quick_action=True,
+)
+def detect_untriangulated_meshes() -> list:
+    """Finds quads and n-gons in meshes that must be delivered fully triangulated."""
+    issues = []
+    for obj in current().meshes:
+        idx = np.nonzero(_face_sizes(obj.data) > 3)[0].tolist()
+        if idx:
+            issues.append(Issue(obj.name, f"{len(idx)} faces aren't triangles", value=f"{len(idx)} faces",
+                                target="0", element="FACE", indices=idx))
+    return issues
+
+
+@AgentTools.register_fix("detect_untriangulated_meshes", display_name="Triangulate Meshes", is_quick_action=True)
+def triangulate_meshes(issues) -> str:
+    """Triangulates every quad and n-gon in the selected meshes."""
+    return f"Triangulated {_triangulate_issues(issues)} faces"
 
 
 # ---------- non-planar faces ----------

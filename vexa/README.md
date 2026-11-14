@@ -48,7 +48,7 @@ vexa/
     runner.py       runs checks with preset settings, applies fixes
     report.py       turns a run into a report and saves it
     results.py      Issue and CheckResult: what every check returns
-    scope.py        which meshes a check looks at (selection, or the runner's scope)
+    scope.py        which objects a check looks at (selection, or the runner's scope)
     selection.py    selects the objects and faces a check flagged
     presets.py      loads preset .json files
     props.py        Blender properties: per-file (scene) and per-session (window manager)
@@ -91,13 +91,14 @@ Each entry is a `RegisteredTool` with `name`, `func`, `kind`, `display_name`,
 | Area | Module | Checks | Fixes |
 | --- | --- | --- | --- |
 | General | `general_tools.py` | – | `count_vertices`, `rename_object`, `select_hard_edges` (tools) |
-| Geometry | `geometry_tools.py` | `detect_ngons`, `detect_nonplanar_faces`, `detect_intersecting_meshes`, `detect_over_triangle_budget` | `triangulate_ngons`, `triangulate_nonplanar_faces` |
+| Geometry | `geometry_tools.py` | `detect_ngons`, `detect_untriangulated_meshes`, `detect_nonplanar_faces`, `detect_intersecting_meshes`, `detect_over_triangle_budget` | `triangulate_ngons`, `triangulate_meshes`, `triangulate_nonplanar_faces` |
 | Transforms | `transform_tools.py` | `detect_unapplied_transforms`, `detect_negative_scale`, `detect_off_center_pivots`, `detect_wrong_unit_scale` | `apply_transforms`, `move_pivots_to_bottom_center`, `set_unit_scale` |
-| UVs | `uv_tools.py` | `detect_missing_uv_maps`, `detect_missing_lightmap_uvs` | – |
+| UVs | `uv_tools.py` | `detect_missing_uv_maps`, `detect_extra_uv_maps`, `detect_missing_lightmap_uvs` | `remove_extra_uv_maps` |
 | Texture | `texture_tools.py` | `detect_missing_textures`, `detect_color_space_issues`, `detect_invalid_texture_sizes`, `detect_unused_material_slots` | `fix_color_spaces`, `remove_unused_material_slots` |
 | Naming | `naming_tools.py` | `detect_default_names`, `detect_invalid_name_characters`, `detect_missing_name_prefix` | `fix_invalid_names`, `add_name_prefix` |
 | Collision | `collision_tools.py` | `detect_invalid_collision_meshes` | – |
 | Rigging | `rigging_tools.py` | `detect_excess_bone_influences` | – |
+| Scene | `scene_tools.py` | `detect_unwanted_objects` | – |
 
 Naming: check functions start with `detect_` and their labels with "Detect "
 ("Detect N-gons"); results and reports show the label without it ("N-gons").

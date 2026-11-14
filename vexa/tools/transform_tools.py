@@ -1,4 +1,4 @@
-"""Transform checks: applied rotation and scale, negative scale, pivot, unit scale."""
+"""Transform checks: applied transforms, negative scale, pivot, scene units."""
 
 import math
 
@@ -16,15 +16,29 @@ def _fmt_vec(v) -> str:
     return "(" + ", ".join(f"{c:.3g}" for c in v) + ")"
 
 
-def _unapplied(obj, check_rotation: bool) -> list:
-    _loc, rot, scale = obj.matrix_basis.decompose()
+def _unapplied(obj, check_rotation: bool, check_location: bool) -> list:
+    """What's wrong with an object's transform, as (label, detail) pairs."""
+    loc, rot, scale = obj.matrix_basis.decompose()
     problems = []
     if any(abs(s - 1.0) > TOL for s in scale):
-        problems.append(f"scale {_fmt_vec(scale)}")
+        problems.append(("scale", f"scale {_fmt_vec(scale)}"))
     if check_rotation and rot.angle > TOL:
         degrees = [math.degrees(a) for a in rot.to_euler()]
-        problems.append(f"rotation {_fmt_vec(degrees)}°")
+        problems.append(("rotation", f"rotation {_fmt_vec(degrees)}°"))
+    if check_location and loc.length > TOL:
+        problems.append(("location", f"location {_fmt_vec(loc)}"))
     return problems
+
+
+def _describe_unapplied(labels: list) -> str:
+    """"Unapplied scale and rotation", "Not at world origin", or both."""
+    parts = []
+    applied = [label for label in labels if label != "location"]
+    if applied:
+        parts.append("Unapplied " + " and ".join(applied))
+    if "location" in labels:
+        parts.append("not at world origin" if parts else "Not at world origin")
+    return "; ".join(parts)
 
 
 # ---------- transforms applied ----------
@@ -37,24 +51,27 @@ def _unapplied(obj, check_rotation: bool) -> list:
     severity="ERROR",
     pass_text="Scale 1, rotation 0",
 )
-def detect_unapplied_transforms(check_rotation: bool = True) -> list:
+def detect_unapplied_transforms(check_rotation: bool = True, check_location: bool = False) -> list:
     """Finds meshes whose scale isn't 1, or whose rotation isn't 0.
 
     check_rotation: also require rotation to be applied, not just scale.
+    check_location: also require the mesh to sit at the world origin (location 0, 0, 0).
     """
     issues = []
     for obj in current().all_meshes:
-        problems = _unapplied(obj, check_rotation)
+        problems = _unapplied(obj, check_rotation, check_location)
         if problems:
-            issues.append(Issue(obj.name, "Unapplied " + " and ".join(p.split()[0] for p in problems),
-                                value="; ".join(problems), target="applied"))
+            issues.append(Issue(obj.name, _describe_unapplied([label for label, _ in problems]),
+                                value="; ".join(detail for _, detail in problems), target="applied"))
     return issues
 
 
 @AgentTools.register_fix("detect_unapplied_transforms", display_name="Apply Transforms")
-def apply_transforms(issues, check_rotation: bool = True) -> str:
+def apply_transforms(issues, check_rotation: bool = True, check_location: bool = False) -> str:
     """Applies scale (and rotation) on meshes with unapplied transforms.
 
+    With check_location, also moves each mesh to the world origin. The mesh moves
+    with its pivot, so the pivot stays where it is on the mesh.
     Skips mirrored meshes and meshes that share data with other objects.
     """
     scene = current().scene
@@ -77,6 +94,9 @@ def apply_transforms(issues, check_rotation: bool = True) -> str:
             if not bpy.ops.object.transform_apply.poll():
                 return "Couldn't apply transforms here. Switch to Object Mode and try again."
             bpy.ops.object.transform_apply(location=False, rotation=check_rotation, scale=True)
+        if check_location:
+            for obj in targets:
+                obj.location = (0.0, 0.0, 0.0)
     msg = f"Applied transforms on {len(targets)} objects"
     if skipped:
         msg += ". Skipped: " + ", ".join(skipped)
@@ -168,29 +188,60 @@ def move_pivots_to_bottom_center(issues) -> str:
     return msg
 
 
-# ---------- unit scale ----------
+# ---------- units ----------
+
+METRIC_UNITS = ("ADAPTIVE", "KILOMETERS", "METERS", "CENTIMETERS", "MILLIMETERS", "MICROMETERS")
+IMPERIAL_UNITS = ("ADAPTIVE", "MILES", "FEET", "INCHES", "THOU")
+ROTATION_UNITS = ("DEGREES", "RADIANS")
+
+
+def _validate_units(length_unit: str, rotation_unit: str) -> None:
+    if length_unit and length_unit not in METRIC_UNITS + IMPERIAL_UNITS:
+        raise ValueError(f"length_unit must be one of {', '.join(dict.fromkeys(METRIC_UNITS + IMPERIAL_UNITS))}")
+    if rotation_unit and rotation_unit not in ROTATION_UNITS:
+        raise ValueError(f"rotation_unit must be {' or '.join(ROTATION_UNITS)}")
+
 
 @AgentTools.register_check(
-    display_name="Detect Wrong Unit Scale",
+    display_name="Detect Wrong Units",
     category="Transforms",
-    why="If the scene's unit scale doesn't match what the engine expects, everything "
-        "exported from this file imports at the wrong size.",
+    why="If the scene's units don't match what the engine or studio expects, everything "
+        "exported from this file imports at the wrong size, and typed values mean something else.",
     pass_text="Matches",
 )
-def detect_wrong_unit_scale(scale_length: float = 1.0) -> list:
-    """Checks the scene's unit scale against what the target engine expects.
+def detect_wrong_unit_scale(scale_length: float = 1.0, length_unit: str = "", rotation_unit: str = "") -> list:
+    """Checks the scene's unit scale, and optionally its length and rotation units.
 
     scale_length: the expected Unit Scale (1.0 means 1 Blender unit = 1 metre).
+    length_unit: the expected length unit, e.g. "METERS" or "CENTIMETERS". Empty: not checked.
+    rotation_unit: the expected rotation unit, "DEGREES" or "RADIANS". Empty: not checked.
     """
+    _validate_units(length_unit, rotation_unit)
     units = current().scene.unit_settings
+    issues = []
     if abs(units.scale_length - scale_length) > 1e-6:
-        return [Issue(None, "Scene unit scale doesn't match the target engine",
-                      value=f"{units.scale_length:g}", target=f"{scale_length:g}")]
-    return []
+        issues.append(Issue(None, "Scene unit scale doesn't match the target engine",
+                            value=f"{units.scale_length:g}", target=f"{scale_length:g}"))
+    if length_unit and units.length_unit != length_unit:
+        issues.append(Issue(None, "Scene length unit doesn't match",
+                            value=units.length_unit.lower(), target=length_unit.lower()))
+    if rotation_unit and units.system_rotation != rotation_unit:
+        issues.append(Issue(None, "Scene rotation unit doesn't match",
+                            value=units.system_rotation.lower(), target=rotation_unit.lower()))
+    return issues
 
 
-@AgentTools.register_fix("detect_wrong_unit_scale", display_name="Set Unit Scale")
-def set_unit_scale(issues, scale_length: float = 1.0) -> str:
-    """Sets the scene's unit scale to the expected value."""
-    current().scene.unit_settings.scale_length = scale_length
-    return f"Set scene unit scale to {scale_length:g}"
+@AgentTools.register_fix("detect_wrong_unit_scale", display_name="Set Units")
+def set_unit_scale(issues, scale_length: float = 1.0, length_unit: str = "", rotation_unit: str = "") -> str:
+    """Sets the scene's unit scale, and the length and rotation units if given."""
+    _validate_units(length_unit, rotation_unit)
+    units = current().scene.unit_settings
+    units.scale_length = scale_length
+    if length_unit and length_unit != "ADAPTIVE":
+        units.system = "METRIC" if length_unit in METRIC_UNITS else "IMPERIAL"
+    if length_unit:
+        units.length_unit = length_unit
+    if rotation_unit:
+        units.system_rotation = rotation_unit
+    return "Set scene units to " + ", ".join(
+        [f"scale {scale_length:g}"] + [u.lower() for u in (length_unit, rotation_unit) if u])

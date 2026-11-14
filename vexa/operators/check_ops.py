@@ -24,13 +24,12 @@ STATE = {"preset_id": "", "scope": "", "results": []}
 # ---------- helpers ----------
 
 def scope_objects(context, scope: str) -> list:
+    """Every object in scope. Checks look at meshes; a few also look at other objects."""
     if scope == "COLLECTION":
-        objs = list(context.view_layer.active_layer_collection.collection.all_objects)
-    elif scope == "SCENE":
-        objs = list(context.scene.objects)
-    else:
-        objs = list(context.selected_objects)
-    return [o for o in objs if o.type == "MESH"]
+        return list(context.view_layer.active_layer_collection.collection.all_objects)
+    if scope == "SCENE":
+        return list(context.scene.objects)
+    return list(context.selected_objects)
 
 
 def disabled_checks(scene) -> set:
@@ -107,7 +106,7 @@ class VEXA_OT_run_checks(bpy.types.Operator):
             self.report({"ERROR"}, "Pick a target first")
             return {"CANCELLED"}
         objs = scope_objects(context, scene.vexa_scope)
-        if not objs:
+        if not any(o.type == "MESH" for o in objs):
             where = {
                 "SELECTED": "Select one or more meshes",
                 "COLLECTION": "The active collection has no meshes",
