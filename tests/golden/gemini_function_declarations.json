@@ -387,6 +387,23 @@
     }
   },
   {
+    "name": "detect_wrong_texture_format",
+    "description": "Finds textures saved in a file format that isn't allowed.\n\nformats: allowed formats, e.g. [\"PNG\"] or [\"PNG\", \"TGA\"]. Images generated in\nBlender and never saved are skipped.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "formats": {
+          "type": "ARRAY",
+          "items": {
+            "type": "STRING"
+          },
+          "description": "Parameter formats"
+        }
+      },
+      "required": []
+    }
+  },
+  {
     "name": "detect_unused_material_slots",
     "description": "Finds material slots no face uses, and empty slots that faces do use.",
     "parameters": {

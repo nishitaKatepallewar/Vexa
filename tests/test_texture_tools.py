@@ -84,6 +84,22 @@ def textured_materials():
 
 
 @test
+def texture_format():
+    c = _crate_with_textures()  # T_Gone.png on disk path, T_Crate_N generated
+    mat = c.data.materials[0]
+    tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    tex.image = bpy.data.images.new("T_Crate_D", 4, 4)
+    tex.image.source = "FILE"
+    tex.image.filepath = "//textures/T_Crate_D.JPG"
+    _, r = run("detect_wrong_texture_format")
+    assert [(i.message, i.target) for i in r.issues] == [("T_Crate_D: JPEG", "PNG")], r.issues
+    _, r = run("detect_wrong_texture_format", formats=["png", "jpg"])
+    assert r.status == "PASS", r.issues
+    _, r = run("detect_wrong_texture_format", formats=["PNGG"])
+    assert r.summary == "Check failed: unknown formats: PNGG", r.summary
+
+
+@test
 def unused_materials_detect_and_fix():
     fresh()
     c = cube()
