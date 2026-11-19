@@ -440,6 +440,20 @@
     }
   },
   {
+    "name": "detect_too_many_materials",
+    "description": "Finds meshes whose faces use more materials than allowed.\n\nmax_materials: how many different materials a mesh's faces may use.\nSlots no face uses don't count (Detect Unused Material Slots finds those).",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "max_materials": {
+          "type": "INTEGER",
+          "description": "Parameter max_materials"
+        }
+      },
+      "required": []
+    }
+  },
+  {
     "name": "detect_unused_materials",
     "description": "Finds materials in the file that no object uses. Checks the whole file, not just\nthe selection, and ignores Grease Pencil materials.",
     "parameters": {
