@@ -55,7 +55,7 @@ vexa/
     prefs.py        reads the add-on preferences and version
     llm/            LLM providers: base.py (interface), gemini.py, worker.py (HTTP in a subprocess)
   tools/            every tool, check and fix, one module per area
-  presets/          built-in targets: general, unity_asset_store, fab, unreal
+  presets/          built-in targets: general, unity_asset_store, fab, unreal, roblox
   operators/        quick actions, Ask Vexa, the check panel's operators, feedback.py
   ui/panel.py       the sidebar
 ```

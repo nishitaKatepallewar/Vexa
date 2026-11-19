@@ -1,0 +1,27 @@
+{
+  "id": "roblox",
+  "name": "Roblox",
+  "description": "Based on Roblox's mesh, texture and Blender export specifications.",
+  "source": "https://create.roblox.com/docs/art/modeling/specifications",
+  "order": 40,
+  "checks": {
+    "detect_over_triangle_budget": {"severity": "ERROR", "max_tris": 20000},
+    "detect_open_edges": {"severity": "ERROR"},
+    "detect_flipped_normals": {"severity": "ERROR"},
+    "detect_ngons": {"severity": "INFO"},
+    "detect_unapplied_transforms": {"severity": "ERROR", "check_rotation": true},
+    "detect_negative_scale": {"severity": "ERROR"},
+    "detect_wrong_unit_scale": {"severity": "WARNING", "scale_length": 0.01, "rotation_unit": "DEGREES"},
+    "detect_excess_bone_influences": {"severity": "ERROR", "max_influences": 4},
+    "detect_missing_uv_maps": {"severity": "ERROR"},
+    "detect_extra_uv_maps": {"severity": "ERROR", "max_uv_maps": 1},
+    "detect_uvs_outside_0_1": {"severity": "ERROR"},
+    "detect_too_many_materials": {"severity": "ERROR", "max_materials": 1},
+    "detect_unused_material_slots": {"severity": "WARNING"},
+    "detect_missing_textures": {"severity": "ERROR"},
+    "detect_wrong_texture_format": {"severity": "ERROR", "formats": ["PNG", "JPEG", "TGA", "BMP"]},
+    "detect_invalid_texture_sizes": {"severity": "WARNING", "power_of_two": false, "max_size": 1024},
+    "detect_color_space_issues": {"severity": "WARNING"},
+    "detect_default_names": {"severity": "INFO"}
+  }
+}

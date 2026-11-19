@@ -23,7 +23,7 @@ def every_builtin_preset_runs():
     cube()
     cube("UCX_SM_Crate_01")
     presets = load_presets()
-    assert {p.id for p in presets} >= {"general", "unity_asset_store", "fab", "unreal"}
+    assert {p.id for p in presets} >= {"general", "unity_asset_store", "fab", "unreal", "roblox"}
     for p in presets:
         for cid in p.checks:
             assert AgentTools.get(cid, kind="check"), f"{p.id} refers to unknown check {cid}"
