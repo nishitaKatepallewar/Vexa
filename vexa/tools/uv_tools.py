@@ -1,10 +1,10 @@
-"""UV checks: UV map present, no extra UV maps, no flipped UVs, lightmap channel present and inside 0–1."""
+"""UV checks: UV map present, no extra UV maps, UVs inside 0–1, no flipped UVs, lightmap channel."""
 
 import numpy as np
 from mathutils.bvhtree import BVHTree
 
 from ..core.registry import AgentTools
-from ..core.results import Issue
+from ..core.results import Issue, plural
 from ..core.scope import current
 
 
@@ -70,6 +70,41 @@ def remove_extra_uv_maps(issues, max_uv_maps: int = 1) -> str:
     if skipped:
         msg += ". Skipped (render UV map is an extra one): " + ", ".join(skipped)
     return msg
+
+
+# ---------- UVs outside 0–1 ----------
+
+@AgentTools.register_check(
+    display_name="Detect UVs Outside 0–1",
+    category="UVs",
+    why="Some engines and stores require every UV inside the 0–1 square. Outside it, "
+        "textures tile or clamp, so the asset looks different from your bake.",
+    pass_text="Inside 0–1",
+)
+def detect_uvs_outside_0_1() -> list:
+    """Finds meshes whose render UV map goes outside the 0–1 square. Selects those faces."""
+    issues = []
+    for obj in current().meshes:
+        mesh = obj.data
+        layer = _render_uv_layer(mesh)
+        if layer is None or not len(mesh.loops):
+            continue
+        uv = np.zeros(len(mesh.loops) * 2, dtype=np.float32)
+        layer.data.foreach_get("uv", uv)
+        uv = uv.reshape(-1, 2)
+        outside_loop = np.any((uv < -1e-4) | (uv > 1 + 1e-4), axis=1)
+        if not outside_loop.any():
+            continue
+        starts = np.zeros(len(mesh.polygons), dtype=np.int64)
+        totals = np.zeros(len(mesh.polygons), dtype=np.int64)
+        mesh.polygons.foreach_get("loop_start", starts)
+        mesh.polygons.foreach_get("loop_total", totals)
+        face_of_loop = np.repeat(np.arange(len(starts)), totals)
+        idx = np.unique(face_of_loop[outside_loop]).tolist()
+        issues.append(Issue(obj.name, f"UVs outside 0–1 on {plural(len(idx), 'face')} ({layer.name})",
+                            value=f"range {uv.min():.2f}–{uv.max():.2f}", target="0–1",
+                            element="FACE", indices=idx))
+    return issues
 
 
 # ---------- flipped UVs ----------

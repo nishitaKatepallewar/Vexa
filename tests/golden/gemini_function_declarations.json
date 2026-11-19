@@ -314,6 +314,15 @@
     }
   },
   {
+    "name": "detect_uvs_outside_0_1",
+    "description": "Finds meshes whose render UV map goes outside the 0\u20131 square. Selects those faces.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "detect_flipped_uvs",
     "description": "Finds faces whose UVs are mirrored (shown red in Maya's UV editor).\n\nallow_overlapping: allow a mirrored face that sits on top of an unflipped one,\ne.g. a symmetric shell stacked onto its other half.",
     "parameters": {
