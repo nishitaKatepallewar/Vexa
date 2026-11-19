@@ -135,6 +135,22 @@ def texture_format():
 
 
 @test
+def too_many_materials():
+    fresh()
+    c = cube()
+    for name in ("M_Wood", "M_Metal", "M_Spare"):
+        c.data.materials.append(bpy.data.materials.new(name))
+    for p in c.data.polygons:
+        p.material_index = 0 if p.index < 3 else 1  # M_Spare is in a slot but unused
+    single = cube("SM_Single", loc=(5, 0, 0))
+    single.data.materials.append(bpy.data.materials.new("M_One"))
+    _, r = run("detect_too_many_materials")
+    assert [(i.object_name, i.message) for i in r.issues] == [("SM_Crate", "2 materials: M_Metal, M_Wood")], r.issues
+    _, r = run("detect_too_many_materials", max_materials=2)
+    assert r.status == "PASS", r.issues
+
+
+@test
 def unused_materials_detect_and_fix():
     fresh()
     c = cube()

@@ -1,5 +1,5 @@
 """Material and texture checks: missing or unwanted textures, colour space, texture size
-and format, material slots, unused materials."""
+and format, materials per mesh, material slots, unused materials."""
 
 import os
 from contextlib import contextmanager
@@ -354,6 +354,34 @@ def detect_textured_materials() -> list:
             total = sum(textured.values())
             issues.append(Issue(obj.name, "Textures on " + ", ".join(sorted(textured)),
                                 value=f"{total} image nodes", target="0"))
+    return issues
+
+
+# ---------- materials per mesh ----------
+
+@AgentTools.register_check(
+    display_name="Detect Too Many Materials",
+    category="Texture",
+    why="Each extra material is an extra draw call, and some platforms (Roblox, for "
+        "one) allow only one material per mesh.",
+    pass_text="Within limit",
+)
+def detect_too_many_materials(max_materials: int = 1) -> list:
+    """Finds meshes whose faces use more materials than allowed.
+
+    max_materials: how many different materials a mesh's faces may use.
+    Slots no face uses don't count (Detect Unused Material Slots finds those).
+    """
+    if max_materials < 1:
+        raise ValueError("max_materials must be at least 1")
+    issues = []
+    for obj in current().meshes:
+        used = {p.material_index for p in obj.data.polygons}
+        names = sorted({obj.material_slots[i].material.name for i in used
+                        if i < len(obj.material_slots) and obj.material_slots[i].material})
+        if len(names) > max_materials:
+            issues.append(Issue(obj.name, f"{len(names)} materials: " + ", ".join(names),
+                                value=f"{len(names)} materials", target=f"≤ {max_materials}"))
     return issues
 
 

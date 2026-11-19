@@ -57,6 +57,20 @@ def extra_uv_maps_fix_keeps_the_render_uv_map():
 
 
 
+@test
+def uvs_outside_0_1():
+    fresh()
+    cube("SM_Inside")  # Blender's cube UVs are inside 0–1
+    c = cube("SM_Tiled", loc=(5, 0, 0))
+    layer = c.data.uv_layers[0]
+    for loop in c.data.polygons[3].loop_indices:
+        u, v = layer.data[loop].uv
+        layer.data[loop].uv = (u + 1.0, v)
+    _, r = run("detect_uvs_outside_0_1")
+    assert [(i.object_name, i.indices) for i in r.issues] == [("SM_Tiled", [3])], r.issues
+    assert r.issues[0].message == "UVs outside 0–1 on 1 face (UVMap)", r.issues
+
+
 def _three_quads_with_uvs():
     """Quad 0 is normal, quad 1 is mirrored on top of quad 0, quad 2 is mirrored on its own."""
     quad = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]

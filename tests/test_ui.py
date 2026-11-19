@@ -103,7 +103,7 @@ def run() -> int:
 
     def presets_listed():
         items = [i[0] for i in props._preset_items(scene, bpy.context)]
-        assert {"general", "unity_asset_store", "fab", "unreal"} <= set(items), items
+        assert {"general", "unity_asset_store", "fab", "unreal", "roblox"} <= set(items), items
 
     def panel_before_run():
         log = draw_panel(panel.VexaMainPanel)
