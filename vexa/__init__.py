@@ -13,7 +13,7 @@ from .ui.panel import PANEL_CLASSES, VexaToggleCategory
 bl_info = {
     "name": "Vexa",
     "author": "Vexa Team",
-    "version": (0, 6, 1),
+    "version": (0, 6, 2),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Vexa",
     "description": "QC checks for game assets, in seconds.",
