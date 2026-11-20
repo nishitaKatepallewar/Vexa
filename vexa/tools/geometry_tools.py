@@ -218,44 +218,114 @@ def detect_open_edges() -> list:
 
 # ---------- flipped normals ----------
 
-def _closed_islands(bm) -> list:
-    """Groups of connected faces whose every edge is shared by exactly two faces."""
-    seen, islands = set(), []
-    for start in bm.faces:
-        if start.index in seen:
-            continue
-        island, stack, closed = [], [start], True
-        seen.add(start.index)
-        while stack:
-            face = stack.pop()
-            island.append(face)
-            for edge in face.edges:
-                if len(edge.link_faces) != 2:
-                    closed = False
-                for other in edge.link_faces:
-                    if other.index not in seen:
-                        seen.add(other.index)
-                        stack.append(other)
-        if closed:
-            islands.append(island)
-    return islands
+def _pieces_with_parity(n_faces: int, face_a, face_b, disagree) -> tuple:
+    """Connected pieces of faces, and each face's winding relative to its piece.
+
+    face_a/face_b: the two faces on each shared edge; disagree: True where they walk
+    that edge in the same direction, i.e. their windings disagree.
+    Returns (piece of each face, parity of each face, set of pieces whose windings
+    can't all agree, which happens on non-orientable or doubled-up geometry).
+    """
+    parent = list(range(n_faces))
+    parity = [0] * n_faces  # winding relative to parent: 0 same, 1 opposite
+
+    def find(x):
+        path = []
+        while parent[x] != x:
+            path.append(x)
+            x = parent[x]
+        acc = 0
+        for node in reversed(path):  # compress, keeping each node's parity to the root
+            acc ^= parity[node]
+            parity[node] = acc
+            parent[node] = x
+        return x
+
+    conflicting = set()
+    for a, b, d in zip(face_a.tolist(), face_b.tolist(), disagree.tolist()):
+        ra, rb = find(a), find(b)
+        pa, pb = (parity[a] if a != ra else 0), (parity[b] if b != rb else 0)
+        if ra == rb:
+            if pa ^ pb != d:
+                conflicting.add(ra)
+        else:
+            parent[rb] = ra
+            parity[rb] = pa ^ pb ^ d
+    roots = np.array([find(f) for f in range(n_faces)], dtype=np.int64)
+    rel = np.array([parity[f] if parent[f] != f else 0 for f in range(n_faces)], dtype=np.int64)
+    return roots, rel, {find(r) for r in conflicting}
 
 
 def _inward_faces(mesh) -> list:
-    """Indices of faces on closed parts of the mesh that point inwards."""
-    bm = bmesh.new()
-    bm.from_mesh(mesh)
-    bm.faces.ensure_lookup_table()
-    before = {f.index: f.normal.copy() for f in bm.faces}
-    closed = [f for island in _closed_islands(bm) for f in island]
-    # One call for every closed piece: the operator already treats each connected piece
-    # on its own, and each call costs time across the whole mesh, so calling it once per
-    # piece took hours on a mesh made of thousands of parts.
-    if closed:
-        bmesh.ops.recalc_face_normals(bm, faces=closed)
-    inward = [f.index for f in closed if f.normal.dot(before[f.index]) < 0]
-    bm.free()
-    return sorted(inward)
+    """Indices of faces on closed parts of the mesh that point inwards.
+
+    For each closed piece (every edge shared by exactly two faces), neighbouring faces
+    must walk their shared edge in opposite directions; that fixes every face's winding
+    relative to the piece. The piece's signed volume then says which winding points
+    out. Pieces with no volume (e.g. two copies of one face) or whose windings can't
+    agree have no inside, so they're skipped. Everything is linear in the face count,
+    so no mesh shape can make it slow.
+    """
+    n_faces, n_loops = len(mesh.polygons), len(mesh.loops)
+    if not n_faces:
+        return []
+    starts = np.zeros(n_faces, dtype=np.int64)
+    totals = np.zeros(n_faces, dtype=np.int64)
+    loop_verts = np.zeros(n_loops, dtype=np.int64)
+    loop_edges = np.zeros(n_loops, dtype=np.int64)
+    co = np.zeros(len(mesh.vertices) * 3, dtype=np.float64)
+    mesh.polygons.foreach_get("loop_start", starts)
+    mesh.polygons.foreach_get("loop_total", totals)
+    mesh.loops.foreach_get("vertex_index", loop_verts)
+    mesh.loops.foreach_get("edge_index", loop_edges)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    face_of_loop = np.repeat(np.arange(n_faces), totals)
+    nxt = np.arange(n_loops) + 1
+    wrap = nxt == (starts + totals)[face_of_loop]
+    nxt[wrap] = starts[face_of_loop[wrap]]
+
+    # A piece is open if any of its edges isn't shared by exactly two faces.
+    per_edge = np.bincount(loop_edges, minlength=len(mesh.edges))
+    open_face = np.zeros(n_faces, dtype=bool)
+    open_face[face_of_loop[per_edge[loop_edges] != 2]] = True
+
+    order = np.argsort(loop_edges, kind="stable")
+    shared = loop_edges[order][1:] == loop_edges[order][:-1]
+    loop_a, loop_b = order[:-1][shared], order[1:][shared]
+    disagree = loop_verts[loop_a] == loop_verts[loop_b]  # same start vertex: same direction
+    piece, parity, conflicting = _pieces_with_parity(
+        n_faces, face_of_loop[loop_a], face_of_loop[loop_b], disagree)
+
+    is_open = np.zeros(n_faces, dtype=bool)  # indexed by piece root
+    is_open[np.unique(piece[open_face])] = True
+    if conflicting:
+        is_open[list(conflicting)] = True
+    closed = ~is_open[piece]
+    if not closed.any():
+        return []
+
+    # Signed volume of each face as seen from its piece's centre (fan triangles).
+    loop_piece = piece[face_of_loop]
+    weight = np.bincount(loop_piece, minlength=n_faces)
+    centre = np.column_stack([np.bincount(loop_piece, weights=co[loop_verts, k], minlength=n_faces)
+                              for k in range(3)]) / np.maximum(weight, 1)[:, None]
+    corner = np.arange(n_loops) - starts[face_of_loop]
+    fan = (corner >= 1) & (corner <= totals[face_of_loop] - 2)
+    p0 = co[loop_verts[starts[face_of_loop[fan]]]] - centre[loop_piece[fan]]
+    p1 = co[loop_verts[fan]] - centre[loop_piece[fan]]
+    p2 = co[loop_verts[nxt[fan]]] - centre[loop_piece[fan]]
+    tri_volume = np.einsum("ij,ij->i", p0, np.cross(p1, p2)) / 6.0
+    face_volume = np.bincount(face_of_loop[fan], weights=tri_volume, minlength=n_faces)
+
+    sign = np.where(parity == 0, 1.0, -1.0)
+    volume = np.bincount(piece, weights=sign * face_volume, minlength=n_faces)
+    size = np.bincount(piece, weights=np.abs(face_volume), minlength=n_faces)
+    has_inside = np.abs(volume) > 1e-6 * size
+    # Faces whose winding disagrees with the one that encloses positive volume.
+    outward_parity = np.where(volume > 0, 0, 1)
+    inward = closed & has_inside[piece] & (parity != outward_parity[piece])
+    return np.nonzero(inward)[0].tolist()
 
 
 @AgentTools.register_check(

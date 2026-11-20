@@ -146,6 +146,17 @@ def flipped_normals_on_a_mesh_of_many_parts():
 
 
 @test
+def flipped_normals_skip_pieces_with_no_inside():
+    # Imported meshes can contain two copies of one face. Together they look like a
+    # closed piece, but it has no volume, so neither copy is "inward".
+    fresh()
+    verts = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (3, 0, 0), (4, 0, 0), (3, 1, 0)]
+    mesh_from("SM_Doubled", verts, [(0, 1, 2), (0, 1, 2), (3, 4, 5), (5, 4, 3)])
+    _, r = run("detect_flipped_normals")
+    assert r.status == "PASS", r.issues
+
+
+@test
 def intersecting_meshes_found():
     fresh()
     cube("SM_A")
