@@ -120,6 +120,32 @@ def unapplied_modifiers():
 
 
 @test
+def flipped_normals_on_a_mesh_of_many_parts():
+    # One mesh made of thousands of separate closed parts (bolts, rivets) used to take
+    # hours: normals were recalculated once per part, each time across the whole mesh.
+    import time
+    import bmesh
+    from mathutils import Matrix
+    fresh()
+    me = bpy.data.meshes.new("SM_Kitbash")
+    bm = bmesh.new()
+    for i in range(3000):
+        geom = bmesh.ops.create_icosphere(bm, subdivisions=1, radius=0.3,
+                                          matrix=Matrix.Translation((i % 60, i // 60, 0)))
+        if i == 7:  # one part inside out
+            bmesh.ops.reverse_faces(bm, faces=list({f for v in geom["verts"] for f in v.link_faces}))
+    bm.to_mesh(me)
+    bm.free()
+    obj = bpy.data.objects.new("SM_Kitbash", me)
+    bpy.context.scene.collection.objects.link(obj)
+    start = time.perf_counter()
+    _, r = run("detect_flipped_normals", objs=[obj])
+    seconds = time.perf_counter() - start
+    assert r.status == "ERROR" and len(r.issues[0].indices) == 20, r.summary  # that one part (20 faces)
+    assert seconds < 10, f"took {seconds:.1f}s"  # well over a minute before the fix
+
+
+@test
 def intersecting_meshes_found():
     fresh()
     cube("SM_A")

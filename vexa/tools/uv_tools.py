@@ -115,19 +115,39 @@ def _render_uv_layer(mesh):
     return next((layer for layer in layers if layer.active_render), layers[0] if len(layers) else None)
 
 
-def _uv_signed_areas(mesh, uv: np.ndarray) -> np.ndarray:
-    """Signed area of every face in UV space. Negative means mirrored (flipped)."""
-    n_loops = len(mesh.loops)
+def _face_loops(mesh):
+    """Each face's first loop and loop count, and the face each loop belongs to."""
     starts = np.zeros(len(mesh.polygons), dtype=np.int64)
     totals = np.zeros(len(mesh.polygons), dtype=np.int64)
     mesh.polygons.foreach_get("loop_start", starts)
     mesh.polygons.foreach_get("loop_total", totals)
-    face_of_loop = np.repeat(np.arange(len(starts)), totals)
-    nxt = np.arange(n_loops) + 1
+    return starts, totals, np.repeat(np.arange(len(starts)), totals)
+
+
+def _uv_signed_areas(uv: np.ndarray, starts, totals, face_of_loop) -> np.ndarray:
+    """Signed area of every face in UV space. Negative means mirrored (flipped)."""
+    nxt = np.arange(len(uv)) + 1
     wrap = nxt == (starts + totals)[face_of_loop]
     nxt[wrap] = starts[face_of_loop[wrap]]
     cross = uv[:, 0] * uv[nxt, 1] - uv[nxt, 0] * uv[:, 1]
     return 0.5 * np.bincount(face_of_loop, weights=cross, minlength=len(starts))
+
+
+def _distinct_uv_faces(uv: np.ndarray, starts, totals, faces) -> np.ndarray:
+    """`faces` without exact duplicates in UV space.
+
+    Repeated parts joined into one mesh (bolts, rivets) share one UV layout, so
+    thousands of identical faces stack on one spot. They cover the same space, so
+    one of each is enough, and each lookup no longer has to wade through the stack.
+    """
+    keep = []
+    for size in np.unique(totals[faces]).tolist():
+        same_size = faces[totals[faces] == size]
+        loops = starts[same_size][:, None] + np.arange(size)
+        coords = np.round(uv[loops].reshape(len(same_size), -1), 6)
+        _, first = np.unique(coords, axis=0, return_index=True)
+        keep.append(same_size[np.sort(first)])
+    return np.sort(np.concatenate(keep))
 
 
 def _flipped_uv_faces(mesh, allow_overlapping: bool) -> list:
@@ -137,24 +157,23 @@ def _flipped_uv_faces(mesh, allow_overlapping: bool) -> list:
     uv = np.zeros(len(mesh.loops) * 2, dtype=np.float32)
     layer.data.foreach_get("uv", uv)
     uv = uv.reshape(-1, 2).astype(np.float64)
-    areas = _uv_signed_areas(mesh, uv)
-    flipped = np.nonzero(areas < -1e-12)[0].tolist()
-    if not (flipped and allow_overlapping):
-        return flipped
+    starts, totals, face_of_loop = _face_loops(mesh)
+    areas = _uv_signed_areas(uv, starts, totals, face_of_loop)
+    flipped = np.nonzero(areas < -1e-12)[0]
+    unflipped = np.nonzero(areas > 1e-12)[0]
+    if not (len(flipped) and allow_overlapping and len(unflipped)):
+        return flipped.tolist()
     # A mirrored shell stacked on top of an unflipped one is fine (shared texture
     # space). Keep only flipped faces whose centre isn't covered by an unflipped face.
-    unflipped = [p for p in mesh.polygons if areas[p.index] > 1e-12]
-    if not unflipped:
-        return flipped
-    points = [(u, v, 0.0) for u, v in uv]
-    tree = BVHTree.FromPolygons(points, [tuple(p.loop_indices) for p in unflipped])
-    alone = []
-    for index in flipped:
-        loops = list(mesh.polygons[index].loop_indices)
-        cu, cv = uv[loops].mean(axis=0)
-        if tree.ray_cast((cu, cv, 1.0), (0.0, 0.0, -1.0))[0] is None:
-            alone.append(index)
-    return alone
+    loops_of = np.split(np.arange(len(uv)), starts[1:])
+    points = np.column_stack([uv, np.zeros(len(uv))]).tolist()
+    covering = _distinct_uv_faces(uv, starts, totals, unflipped)
+    tree = BVHTree.FromPolygons(points, [loops_of[i].tolist() for i in covering.tolist()])
+    centres = np.column_stack([np.bincount(face_of_loop, weights=uv[:, k], minlength=len(starts)) / totals
+                               for k in (0, 1)])
+    ray_cast, down = tree.ray_cast, (0.0, 0.0, -1.0)
+    return [index for index, (cu, cv) in zip(flipped.tolist(), centres[flipped].tolist())
+            if ray_cast((cu, cv, 1.0), down)[0] is None]
 
 
 @AgentTools.register_check(

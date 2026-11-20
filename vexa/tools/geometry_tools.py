@@ -247,10 +247,13 @@ def _inward_faces(mesh) -> list:
     bm.from_mesh(mesh)
     bm.faces.ensure_lookup_table()
     before = {f.index: f.normal.copy() for f in bm.faces}
-    inward = []
-    for island in _closed_islands(bm):
-        bmesh.ops.recalc_face_normals(bm, faces=island)
-        inward += [f.index for f in island if f.normal.dot(before[f.index]) < 0]
+    closed = [f for island in _closed_islands(bm) for f in island]
+    # One call for every closed piece: the operator already treats each connected piece
+    # on its own, and each call costs time across the whole mesh, so calling it once per
+    # piece took hours on a mesh made of thousands of parts.
+    if closed:
+        bmesh.ops.recalc_face_normals(bm, faces=closed)
+    inward = [f.index for f in closed if f.normal.dot(before[f.index]) < 0]
     bm.free()
     return sorted(inward)
 

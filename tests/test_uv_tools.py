@@ -96,5 +96,36 @@ def flipped_uvs():
     assert r.issues[0].indices == [1, 2], r.issues
 
 
+@test
+def flipped_uvs_on_many_parts_sharing_one_layout():
+    # Thousands of joined parts with identical, mirrored UVs used to take minutes:
+    # every lookup waded through the whole stack of identical UV faces.
+    import time
+    import bpy
+    import bmesh
+    from mathutils import Matrix
+    fresh()
+    me = bpy.data.meshes.new("SM_Kitbash")
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    for i in range(3000):
+        bmesh.ops.create_icosphere(bm, subdivisions=1, radius=0.3, calc_uvs=True,
+                                   matrix=Matrix.Translation((i % 60, i // 60, 0)))
+    for f in bm.faces:  # mirror the left half, stacked on the right half (symmetric unwrap)
+        if f.calc_center_median().x < 30:
+            for loop in f.loops:
+                loop[uv].uv.x = 1.0 - loop[uv].uv.x
+    bm.to_mesh(me)
+    bm.free()
+    obj = bpy.data.objects.new("SM_Kitbash", me)
+    bpy.context.scene.collection.objects.link(obj)
+    start = time.perf_counter()
+    _, r = run("detect_flipped_uvs", objs=[obj])
+    seconds = time.perf_counter() - start
+    assert seconds < 2, f"took {seconds:.1f}s"  # 0.2s now; about 6s before the fix
+    _, strict = run("detect_flipped_uvs", objs=[obj], allow_overlapping=False)
+    assert len(strict.issues[0].indices) > len(r.issues[0].indices if r.issues else []), (r.summary, strict.summary)
+
+
 if __name__ == "__main__":
     main(globals())
