@@ -10,6 +10,7 @@ import numpy as np
 from mathutils.bvhtree import BVHTree
 from mathutils.geometry import distance_point_to_plane
 
+from ..core.nodes import material_nodes
 from ..core.registry import AgentTools
 from ..core.results import Issue
 from ..core.scope import current
@@ -421,26 +422,67 @@ def detect_color_attributes() -> list:
     return issues
 
 
+def _used_color_attributes(obj) -> dict:
+    """Colour attributes the object's materials read, as {name: material name}.
+
+    A Color Attribute node with no name reads the mesh's default colour attribute.
+    """
+    attrs = obj.data.color_attributes
+    default = getattr(attrs, "default_color_name", "") or (attrs[0].name if len(attrs) else "")
+    used = {}
+    for slot in obj.material_slots:
+        if slot.material is None:
+            continue
+        for node in material_nodes(slot.material):
+            if node.type == "VERTEX_COLOR":
+                name = node.layer_name or default
+            elif node.type == "ATTRIBUTE" and node.attribute_type == "GEOMETRY":
+                name = node.attribute_name
+            else:
+                continue
+            if name in attrs:
+                used.setdefault(name, slot.material.name)
+    return used
+
+
+def _color_skip_reason(issue) -> str:
+    obj = current().scene.objects.get(issue.object_name)
+    if obj is None:
+        return "not in the scene"
+    if any(m.type == "NODES" for m in obj.modifiers):
+        return "geometry nodes may read them"
+    used = _used_color_attributes(obj)
+    if used and len(used) == len(obj.data.color_attributes):
+        return "used by " + ", ".join(sorted(set(used.values())))
+    return ""
+
+
 @AgentTools.register_fix(
-    "detect_color_attributes", display_name="Remove Vertex Colors",
-    confirm=(
-        "Deletes every vertex colour layer on the flagged meshes, including ones a material "
-        "or the engine uses, for example as a mask."
-    ),
+    "detect_color_attributes", display_name="Remove Vertex Colors", safe=True,
+    skip_reason=_color_skip_reason,
 )
 def remove_color_attributes(issues) -> str:
-    """Removes every vertex colour attribute from the flagged meshes."""
+    """Removes the vertex colour attributes no material on the mesh reads.
+
+    Colours a material uses (Color Attribute or Attribute node, also inside node
+    groups) are kept: removing them would change how the asset looks.
+    """
     scene = current().scene
-    removed = 0
+    removed, kept = 0, 0
     for issue in issues:
         obj = scene.objects.get(issue.object_name)
         if not obj:
             continue
         attrs = obj.data.color_attributes
+        used = _used_color_attributes(obj)
         for name in [attr.name for attr in attrs]:
+            if name in used:
+                kept += 1
+                continue
             attrs.remove(attrs[name])
             removed += 1
-    return f"Removed {removed} vertex color attributes"
+    msg = f"Removed {removed} vertex color attributes"
+    return msg + (f", kept {kept} a material uses" if kept else "")
 
 
 # ---------- unapplied modifiers ----------

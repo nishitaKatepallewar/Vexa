@@ -91,6 +91,39 @@ def flipped_normals_detect_and_fix():
         assert all(p.normal.dot(p.center) > 0 for p in obj.data.polygons), obj.name
 
 
+def _node_material(name):
+    mat = bpy.data.materials.new(name)
+    if mat.node_tree is None:  # Blender 4.x; 5.x materials always have nodes
+        mat.use_nodes = True
+    return mat
+
+
+@test
+def vertex_colors_a_material_uses_are_kept():
+    """Audit: Remove Vertex Colors deleted a mask the material used."""
+    fresh()
+    c = cube()
+    c.data.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
+    c.data.color_attributes.new("Mask", "BYTE_COLOR", "CORNER")
+    mat = _node_material("M_Painted")
+    group = bpy.data.node_groups.new("Blend", "ShaderNodeTree")  # the mask is read inside a group
+    group.nodes.new("ShaderNodeVertexColor").layer_name = "Mask"
+    mat.node_tree.nodes.new("ShaderNodeGroup").node_tree = group
+    c.data.materials.append(mat)
+    msg, r = fix("detect_color_attributes")
+    assert [a.name for a in c.data.color_attributes] == ["Mask"], msg
+    assert msg == "Removed 1 vertex color attributes, kept 1 a material uses", msg
+    assert not r.fixable and r.issues[0].no_fix == "used by M_Painted", r.issues
+
+    other = cube("SM_Default", loc=(5, 0, 0))
+    other.data.color_attributes.new("Tint", "BYTE_COLOR", "CORNER")
+    mat2 = _node_material("M_Tint")
+    mat2.node_tree.nodes.new("ShaderNodeVertexColor")  # no name: reads the default colour
+    other.data.materials.append(mat2)
+    _, r = run("detect_color_attributes", objs=[other])
+    assert not r.fixable and r.issues[0].no_fix == "used by M_Tint", r.issues
+
+
 @test
 def vertex_colors_detect_and_fix():
     fresh()

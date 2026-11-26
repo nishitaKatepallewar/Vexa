@@ -130,7 +130,7 @@
   },
   {
     "name": "remove_color_attributes",
-    "description": "Removes every vertex colour attribute from the flagged meshes.",
+    "description": "Removes the vertex colour attributes no material on the mesh reads.\n\nColours a material uses (Color Attribute or Attribute node, also inside node\ngroups) are kept: removing them would change how the asset looks.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
