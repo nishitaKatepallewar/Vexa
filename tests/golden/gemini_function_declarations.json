@@ -103,7 +103,7 @@
   },
   {
     "name": "detect_flipped_normals",
-    "description": "Finds faces whose normals point into the mesh instead of out of it.\n\nOnly closed parts of a mesh are checked: on an open surface, such as a plane,\nneither side is \"outside\".",
+    "description": "Finds faces whose normals point into the mesh instead of out of it.\n\nOnly closed parts of a mesh are checked: on an open surface, such as a plane,\nneither side is \"outside\". Pieces that mostly face inwards are reported apart,\nas inside out: they may be rooms or sky domes.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -112,7 +112,7 @@
   },
   {
     "name": "flip_normals_outward",
-    "description": "Flips the faces that point inwards, so every face points out of the mesh.",
+    "description": "Flips faces that point the other way from the rest of their piece.\n\nPieces that mostly face inwards are left: they may be meant to be seen from\ninside, like a room or a sky dome.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
