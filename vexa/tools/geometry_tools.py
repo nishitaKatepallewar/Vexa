@@ -111,7 +111,14 @@ def detect_ngons() -> list:
     return issues
 
 
-@AgentTools.register_fix("detect_ngons", display_name="Triangulate N-gons", is_quick_action=True)
+@AgentTools.register_fix(
+    "detect_ngons", display_name="Triangulate N-gons", is_quick_action=True,
+    confirm=(
+        "Splits every n-gon into triangles. Do this before baking normal maps: triangulating "
+        "after a bake changes the triangles the bake was made on and causes shading seams. If "
+        "you triangulate with a Triangulate modifier or in the exporter, you don't need this."
+    ),
+)
 def triangulate_ngons(issues) -> str:
     """Triangulates every n-gon in the selected meshes."""
     return f"Triangulated {_triangulate_issues(issues)} n-gons"
@@ -138,7 +145,15 @@ def detect_untriangulated_meshes() -> list:
     return issues
 
 
-@AgentTools.register_fix("detect_untriangulated_meshes", display_name="Triangulate Meshes", is_quick_action=True)
+@AgentTools.register_fix(
+    "detect_untriangulated_meshes", display_name="Triangulate Meshes", is_quick_action=True,
+    confirm=(
+        "Splits every quad and n-gon into triangles. Do this before baking normal maps: "
+        "triangulating after a bake changes the triangles the bake was made on and causes "
+        "shading seams. If you triangulate with a Triangulate modifier or in the exporter, "
+        "you don't need this."
+    ),
+)
 def triangulate_meshes(issues) -> str:
     """Triangulates every quad and n-gon in the selected meshes."""
     return f"Triangulated {_triangulate_issues(issues)} faces"
@@ -171,7 +186,14 @@ def detect_nonplanar_faces(threshold_deg: float = 0.001) -> list:
     return issues
 
 
-@AgentTools.register_fix("detect_nonplanar_faces", display_name="Triangulate Non-Planar Faces", is_quick_action=True)
+@AgentTools.register_fix(
+    "detect_nonplanar_faces", display_name="Triangulate Non-Planar Faces", is_quick_action=True,
+    confirm=(
+        "Splits each bent face into triangles. Do this before baking normal maps: "
+        "triangulating after a bake changes the triangles the bake was made on and causes "
+        "shading seams."
+    ),
+)
 def triangulate_nonplanar_faces(issues) -> str:
     """Triangulates every non-planar face in the selected meshes."""
     return f"Triangulated {_triangulate_issues(issues)} non-planar faces"
@@ -352,7 +374,13 @@ def detect_flipped_normals() -> list:
     return issues
 
 
-@AgentTools.register_fix("detect_flipped_normals", display_name="Flip Normals Outward", is_quick_action=True)
+@AgentTools.register_fix(
+    "detect_flipped_normals", display_name="Flip Normals Outward", is_quick_action=True,
+    confirm=(
+        "Turns the flagged faces so they point out of the mesh. Rooms, sky domes and other "
+        "pieces meant to be seen from inside are turned outward too."
+    ),
+)
 def flip_normals_outward(issues) -> str:
     """Flips the faces that point inwards, so every face points out of the mesh."""
     scene = current().scene
@@ -393,7 +421,13 @@ def detect_color_attributes() -> list:
     return issues
 
 
-@AgentTools.register_fix("detect_color_attributes", display_name="Remove Vertex Colors")
+@AgentTools.register_fix(
+    "detect_color_attributes", display_name="Remove Vertex Colors",
+    confirm=(
+        "Deletes every vertex colour layer on the flagged meshes, including ones a material "
+        "or the engine uses, for example as a mask."
+    ),
+)
 def remove_color_attributes(issues) -> str:
     """Removes every vertex colour attribute from the flagged meshes."""
     scene = current().scene

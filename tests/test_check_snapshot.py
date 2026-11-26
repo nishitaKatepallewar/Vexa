@@ -2,8 +2,8 @@
 
 Runs every check (with default and stricter settings) and every fix on a set of
 scenes, and compares the results with tests/golden/check_results.json: status,
-summary, each issue's object, message, value, target and selected elements, and
-what each fix changed. Refactors must reproduce it exactly.
+summary, each issue's object, message, value, target, selected elements and why the
+fix leaves it (if it does), and what each fix changed. Refactors must reproduce it exactly.
 
 If you change a check's behaviour on purpose, regenerate it and review the diff:
 
@@ -221,7 +221,8 @@ def _result(res) -> dict:
     return {
         "status": res.status,
         "summary": res.summary,
-        "issues": [[i.object_name, i.message, i.value, i.target, i.element, _ranges(i.indices)] for i in res.issues],
+        "issues": [[i.object_name, i.message, i.value, i.target, i.element, _ranges(i.indices)]
+                   + ([i.no_fix] if i.no_fix else []) for i in res.issues],
     }
 
 

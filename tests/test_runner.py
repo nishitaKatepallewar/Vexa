@@ -28,7 +28,7 @@ class temporary_checks:
         def _t_flag_all(limit: int = 1) -> list:
             return [Issue(o.name, "flagged", value=str(limit)) for o in current().meshes]
 
-        @AgentTools.register_fix("_t_flag_all")
+        @AgentTools.register_fix("_t_flag_all", safe=True)
         def _t_fix_all(issues) -> str:
             return f"fixed {len(issues)}"
 

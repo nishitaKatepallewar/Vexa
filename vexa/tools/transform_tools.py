@@ -66,7 +66,15 @@ def detect_unapplied_transforms(check_rotation: bool = True, check_location: boo
     return issues
 
 
-@AgentTools.register_fix("detect_unapplied_transforms", display_name="Apply Transforms")
+@AgentTools.register_fix(
+    "detect_unapplied_transforms", display_name="Apply Transforms",
+    confirm=(
+        "Applies scale and rotation so they become 1 and 0 without moving the mesh. Modifiers "
+        "such as Bevel or Solidify can look different afterwards. With 'at the world origin' "
+        "on, each object also moves to the origin, so the parts of an assembly end up on top "
+        "of each other."
+    ),
+)
 def apply_transforms(issues, check_rotation: bool = True, check_location: bool = False) -> str:
     """Applies scale (and rotation) on meshes with unapplied transforms.
 
@@ -162,7 +170,14 @@ def detect_off_center_pivots(tolerance_m: float = 0.01) -> list:
     return issues
 
 
-@AgentTools.register_fix("detect_off_center_pivots", display_name="Move Pivots to Bottom Centre")
+@AgentTools.register_fix(
+    "detect_off_center_pivots", display_name="Move Pivots to Bottom Centre",
+    confirm=(
+        "Moves each flagged mesh's origin to the bottom centre of its bounds. Right for props "
+        "that stand on the floor. Wrong for doors and lids that turn on a hinge, and for "
+        "modular pieces that snap at a corner."
+    ),
+)
 def move_pivots_to_bottom_center(issues) -> str:
     """Moves each flagged mesh's origin to the bottom centre without moving the mesh.
 
@@ -231,7 +246,14 @@ def detect_wrong_unit_scale(scale_length: float = 1.0, length_unit: str = "", ro
     return issues
 
 
-@AgentTools.register_fix("detect_wrong_unit_scale", display_name="Set Units")
+@AgentTools.register_fix(
+    "detect_wrong_unit_scale", display_name="Set Units",
+    confirm=(
+        "Changes the scene's unit settings without resizing anything, so everything exports "
+        "at a different size. For example, a 2 m crate exports as 2 cm after changing the "
+        "unit scale from 1.0 to 0.01."
+    ),
+)
 def set_unit_scale(issues, scale_length: float = 1.0, length_unit: str = "", rotation_unit: str = "") -> str:
     """Sets the scene's unit scale, and the length and rotation units if given."""
     _validate_units(length_unit, rotation_unit)

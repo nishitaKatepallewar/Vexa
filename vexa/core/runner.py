@@ -35,10 +35,14 @@ def run_check(check_name: str, overrides: Optional[Dict], scope: scope_mod.Check
     check = AgentTools.get(check_name, kind=CHECK)
     if check is None:
         return CheckResult(check_name, check_name, "INFO", "Unknown check (update Vexa?)")
+    fix = AgentTools.fix_for(check_name)
     try:
         settings = check_settings(check_name, overrides)
         with scope_mod.using(scope):
             issues: List[Issue] = check.func(**settings) or []
+            if fix and fix.fix.skip_reason:
+                for issue in issues:
+                    issue.no_fix = fix.fix.skip_reason(issue) or ""
     except Exception as e:  # noqa: BLE001 - one broken check must never stop a run
         return CheckResult(check_name, problem_title(check.display_name), "ERROR", f"Check failed: {e}",
                            why=check.check.why)
@@ -48,7 +52,8 @@ def run_check(check_name: str, overrides: Optional[Dict], scope: scope_mod.Check
         status=(severity or check.check.severity) if issues else PASS,
         summary=summarize(issues, check.check.pass_text),
         why=check.check.why,
-        fixable=bool(issues) and AgentTools.fix_for(check_name) is not None,
+        fixable=fix is not None and any(not i.no_fix for i in issues),
+        fix_safe=fix is not None and fix.fix.safe,
         issues=issues,
     )
 
@@ -63,15 +68,23 @@ def run_preset(preset: Preset, objects: Iterable, scene=None,
 
 
 def apply_fix(result: CheckResult, overrides: Optional[Dict], scope: scope_mod.CheckScope) -> str:
-    """Applies a check's registered fix to the issues in `result`."""
+    """Applies a check's registered fix to the issues in `result` it can handle.
+
+    Issues with a `no_fix` reason are never passed to the fix.
+    """
     fix = AgentTools.fix_for(result.check_id)
-    if not (fix and result.issues):
+    issues = [i for i in result.issues if not i.no_fix]
+    if not (fix and issues):
         return "Nothing to fix"
     settings = check_settings(result.check_id, overrides)
     accepted = inspect.signature(fix.func).parameters
     kwargs = {k: v for k, v in settings.items() if k in accepted}
     with scope_mod.using(scope):
-        return fix.func(result.issues, **kwargs)
+        message = fix.func(issues, **kwargs)
+    left = sorted({f"{i.object_name or 'scene'} ({i.no_fix})" for i in result.issues if i.no_fix})
+    if left:
+        message += ". Left for you: " + "; ".join(left[:5]) + ("…" if len(left) > 5 else "")
+    return message
 
 
 # ---------- checks and fixes called as tools (quick actions, Gemini) ----------
@@ -93,6 +106,9 @@ def run_fix_as_tool(fix_name: str) -> str:
     result = run_check(fix.fix.check, None, scope)
     if not result.issues:
         return f"{result.title}: nothing to fix."
+    if not result.fixable:
+        reasons = sorted({i.no_fix for i in result.issues})
+        return f"{result.title}: nothing {fix.display_name} can change safely ({'; '.join(reasons)})."
     return apply_fix(result, None, scope)
 
 
