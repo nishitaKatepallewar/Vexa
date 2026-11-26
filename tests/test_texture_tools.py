@@ -144,9 +144,15 @@ def slots_a_modifier_uses_are_kept():
     solidify = plane.modifiers.new("Solidify", "SOLIDIFY")
     solidify.use_rim, solidify.material_offset_rim = True, 1
     _, r = run("detect_unused_material_slots")
+    assert r.status == "PASS", r.issues  # the exported mesh's rim uses M_Rim
+    # A slot nothing uses, before the rim's: removing it would shift the rim's offset.
+    plane.data.materials.append(bpy.data.materials.new("M_Rim2"))
+    solidify.material_offset_rim = 2
+    _, r = run("detect_unused_material_slots")
+    assert r.issues[0].message == "Material slots: 1 unused", r.issues
     assert not r.fixable and "Solidify" in r.issues[0].no_fix, r.issues
     fix("detect_unused_material_slots")
-    assert [s.material.name for s in plane.material_slots] == ["M_Face", "M_Rim"]
+    assert [s.material.name for s in plane.material_slots] == ["M_Face", "M_Rim", "M_Rim2"]
 
 
 

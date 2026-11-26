@@ -5,7 +5,9 @@ import os
 from contextlib import contextmanager
 
 import bpy
+import numpy as np
 
+from ..core.meshes import exported_mesh
 from ..core.registry import AgentTools
 from ..core.results import Issue
 from ..core.scope import current
@@ -280,6 +282,15 @@ def detect_wrong_texture_format(formats: list = ["PNG"]) -> list:  # noqa: B006 
 
 # ---------- material slots ----------
 
+def _used_material_indices(obj) -> set:
+    """Material slots the exported mesh's faces use, modifiers included (e.g. a
+    Solidify rim material)."""
+    with exported_mesh(obj) as mesh:
+        indices = np.zeros(len(mesh.polygons), dtype=np.int32)
+        mesh.polygons.foreach_get("material_index", indices)
+    return set(np.unique(indices).tolist())
+
+
 @AgentTools.register_check(
     display_name="Detect Unused Material Slots",
     category="Texture",
@@ -293,7 +304,7 @@ def detect_unused_material_slots() -> list:
     for obj in current().meshes:
         if not obj.material_slots:
             continue
-        used = {p.material_index for p in obj.data.polygons}
+        used = _used_material_indices(obj)
         unused = [i for i in range(len(obj.material_slots)) if i not in used]
         empty = [i for i, s in enumerate(obj.material_slots) if s.material is None and i in used]
         parts = []
@@ -425,7 +436,7 @@ def detect_too_many_materials(max_materials: int = 1) -> list:
         raise ValueError("max_materials must be at least 1")
     issues = []
     for obj in current().meshes:
-        used = {p.material_index for p in obj.data.polygons}
+        used = _used_material_indices(obj)
         names = sorted({obj.material_slots[i].material.name for i in used
                         if i < len(obj.material_slots) and obj.material_slots[i].material})
         if len(names) > max_materials:

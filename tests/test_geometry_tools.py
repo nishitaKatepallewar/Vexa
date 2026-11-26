@@ -207,6 +207,56 @@ def flipped_normals_skip_pieces_with_no_inside():
     assert r.status == "PASS", r.issues
 
 
+def _half_cube():
+    """A cube cut at x=0, open along the cut, with a Mirror that closes it."""
+    import bmesh
+    obj = cube("SM_Half")
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=(0, 0, 0),
+                           plane_no=(1, 0, 0), clear_inner=True)
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.modifiers.new("Mirror", "MIRROR").use_clip = True
+    return obj
+
+
+@test
+def checks_look_at_the_mesh_as_exported():
+    """Audit: open edges flagged a Mirror seam that's closed in the export, and the
+    triangle budget passed 1,000 while the export had 3,072."""
+    fresh()
+    half = _half_cube()
+    assert sum(1 for e in half.data.edges) and run("detect_open_edges")[1].status == "PASS"
+    half.modifiers["Mirror"].show_viewport = False
+    _, r = run("detect_open_edges")
+    assert r.status == "WARNING", r.summary  # without the Mirror the seam is open
+
+    fresh()
+    smooth = cube("SM_Smooth")
+    smooth.modifiers.new("Subdivision", "SUBSURF").levels = 2
+    _, r = run("detect_over_triangle_budget", max_tris=50)
+    assert r.issues[0].value == "192 tris" and r.issues[0].message == "Over triangle budget (12 before modifiers)"
+    _, r = run("detect_over_vertex_budget", max_verts=50)
+    assert r.issues[0].value == "98 verts", r.issues
+
+    fresh()
+    tri = cube("SM_Tri")
+    tri.modifiers.new("Triangulate", "TRIANGULATE")
+    assert run("detect_untriangulated_meshes")[1].status == "PASS"
+    assert run("detect_nonplanar_faces", threshold_deg=0.0)[1].status == "PASS"
+
+    fresh()
+    bpy.ops.mesh.primitive_cylinder_add(vertices=8, end_fill_type="TRIFAN")  # caps of triangles
+    can = bpy.context.active_object
+    assert run("detect_ngons")[1].status == "PASS"
+    can.modifiers.new("Decimate", "DECIMATE").decimate_type = "DISSOLVE"  # merges each cap into one n-gon
+    _, r = run("detect_ngons")
+    issue = r.issues[0]
+    assert issue.message == "2 n-gons (made by modifiers)" and issue.element is None, issue
+    assert not r.fixable and issue.no_fix.startswith("made by modifiers"), issue
+
+
 @test
 def intersecting_meshes_found():
     fresh()

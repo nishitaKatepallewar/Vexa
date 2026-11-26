@@ -10,6 +10,7 @@ import numpy as np
 from mathutils.bvhtree import BVHTree
 from mathutils.geometry import distance_point_to_plane
 
+from ..core.meshes import exported_mesh, has_shape_modifiers
 from ..core.nodes import material_nodes
 from ..core.registry import AgentTools
 from ..core.results import Issue
@@ -81,6 +82,32 @@ def _triangulate_issues(issues) -> int:
     return total
 
 
+def _found(obj, find) -> tuple:
+    """What find(mesh) -> indices reports for the object, as (indices, count, note).
+
+    The count comes from the mesh as exported, with modifiers applied: a Mirror can
+    close a seam, a Triangulate modifier leaves no quads, a Bevel can add n-gons.
+    Indices are always in the object's own mesh, so Select Problems can show them.
+    `note` is "" if modifiers don't change the result, otherwise words to say so.
+    """
+    own = find(obj.data)
+    if not has_shape_modifiers(obj):
+        return own, len(own), ""
+    with exported_mesh(obj) as mesh:
+        count = len(find(mesh))
+    if count == len(own):
+        return own, count, ""
+    if not own:
+        return [], count, " (made by modifiers)"
+    return own, count, " after modifiers"
+
+
+def _triangulate_skip_reason(issue) -> str:
+    if not issue.indices:
+        return "made by modifiers: change or apply them first"
+    return ""
+
+
 def triangle_count(mesh) -> int:
     return int(np.sum(np.maximum(_face_sizes(mesh) - 2, 0)))
 
@@ -105,15 +132,16 @@ def detect_ngons() -> list:
     """Finds faces with more than four sides in the selected meshes."""
     issues = []
     for obj in current().meshes:
-        idx = np.nonzero(_face_sizes(obj.data) > 4)[0].tolist()
-        if idx:
-            issues.append(Issue(obj.name, f"{len(idx)} n-gons", value=f"{len(idx)} n-gons",
-                                element="FACE", indices=idx))
+        idx, count, note = _found(obj, lambda mesh: np.nonzero(_face_sizes(mesh) > 4)[0].tolist())
+        if count:
+            issues.append(Issue(obj.name, f"{count} n-gons{note}", value=f"{count} n-gons",
+                                element="FACE" if idx else None, indices=idx))
     return issues
 
 
 @AgentTools.register_fix(
     "detect_ngons", display_name="Triangulate N-gons", is_quick_action=True,
+    skip_reason=_triangulate_skip_reason,
     confirm=(
         "Splits every n-gon into triangles. Do this before baking normal maps: triangulating "
         "after a bake changes the triangles the bake was made on and causes shading seams. If "
@@ -139,15 +167,16 @@ def detect_untriangulated_meshes() -> list:
     """Finds quads and n-gons in meshes that must be delivered fully triangulated."""
     issues = []
     for obj in current().meshes:
-        idx = np.nonzero(_face_sizes(obj.data) > 3)[0].tolist()
-        if idx:
-            issues.append(Issue(obj.name, f"{len(idx)} faces aren't triangles", value=f"{len(idx)} faces",
-                                target="0", element="FACE", indices=idx))
+        idx, count, note = _found(obj, lambda mesh: np.nonzero(_face_sizes(mesh) > 3)[0].tolist())
+        if count:
+            issues.append(Issue(obj.name, f"{count} faces aren't triangles{note}", value=f"{count} faces",
+                                target="0", element="FACE" if idx else None, indices=idx))
     return issues
 
 
 @AgentTools.register_fix(
     "detect_untriangulated_meshes", display_name="Triangulate Meshes", is_quick_action=True,
+    skip_reason=_triangulate_skip_reason,
     confirm=(
         "Splits every quad and n-gon into triangles. Do this before baking normal maps: "
         "triangulating after a bake changes the triangles the bake was made on and causes "
@@ -177,18 +206,16 @@ def detect_nonplanar_faces(threshold_deg: float = 0.001) -> list:
     """
     issues = []
     for obj in current().meshes:
-        idx = _nonplanar_indices(obj.data, threshold_deg)
-        if idx:
-            message = f"{len(idx)} non-planar faces"
-            if any(m.type == "SUBSURF" for m in obj.modifiers):
-                message += " (has Subdivision Surface, so this may be expected)"
-            issues.append(Issue(obj.name, message, value=f"{len(idx)} faces",
-                                element="FACE", indices=idx))
+        idx, count, note = _found(obj, lambda mesh: _nonplanar_indices(mesh, threshold_deg))
+        if count:
+            issues.append(Issue(obj.name, f"{count} non-planar faces{note}", value=f"{count} faces",
+                                element="FACE" if idx else None, indices=idx))
     return issues
 
 
 @AgentTools.register_fix(
     "detect_nonplanar_faces", display_name="Triangulate Non-Planar Faces", is_quick_action=True,
+    skip_reason=_triangulate_skip_reason,
     confirm=(
         "Splits each bent face into triangles. Do this before baking normal maps: "
         "triangulating after a bake changes the triangles the bake was made on and causes "
@@ -227,15 +254,21 @@ def detect_open_edges() -> list:
     for obj in current().meshes:
         counts = _edge_face_counts(obj.data)
         idx = np.nonzero(counts != 2)[0].tolist()
-        if not idx:
+        note = ""
+        if has_shape_modifiers(obj):  # e.g. a Mirror closes the seam in the export
+            with exported_mesh(obj) as mesh:
+                counts = _edge_face_counts(mesh)
+            note = "" if int(np.count_nonzero(counts != 2)) == len(idx) else " after modifiers"
+        total = int(np.count_nonzero(counts != 2))
+        if not total:
             continue
         parts = []
         for label, mask in (("open", counts == 1), ("non-manifold", counts > 2), ("loose", counts == 0)):
             n = int(np.count_nonzero(mask))
             if n:
                 parts.append(f"{n} {label}")
-        issues.append(Issue(obj.name, ", ".join(parts) + " edges", value=f"{len(idx)} edges",
-                            target="0", element="EDGE", indices=idx))
+        issues.append(Issue(obj.name, ", ".join(parts) + " edges" + note, value=f"{total} edges",
+                            target="0", element="EDGE" if idx else None, indices=idx))
     return issues
 
 
@@ -581,13 +614,17 @@ def detect_intersecting_meshes() -> list:
 def detect_over_triangle_budget(max_tris: int = 20000) -> list:
     """Finds meshes whose triangle count exceeds a budget.
 
-    max_tris: the maximum number of triangles allowed per mesh.
+    max_tris: the maximum number of triangles allowed per mesh, counted with
+    modifiers applied, as exported.
     """
     issues = []
     for obj in current().meshes:
-        tris = triangle_count(obj.data)
+        with exported_mesh(obj) as mesh:
+            tris = triangle_count(mesh)
         if tris > max_tris:
-            issues.append(Issue(obj.name, "Over triangle budget",
+            own = triangle_count(obj.data)
+            note = f" ({own:,} before modifiers)" if own != tris else ""
+            issues.append(Issue(obj.name, "Over triangle budget" + note,
                                 value=f"{tris:,} tris", target=f"{max_tris:,}"))
     return issues
 
@@ -605,12 +642,16 @@ def detect_over_vertex_budget(max_verts: int = 10000) -> list:
     """Finds meshes whose vertex count exceeds a budget.
 
     max_verts: the maximum number of vertices allowed per mesh, as counted in
-    Blender. Engines count more where UV seams and hard edges split vertices.
+    Blender with modifiers applied. Engines count more where UV seams and hard
+    edges split vertices.
     """
     issues = []
     for obj in current().meshes:
-        verts = len(obj.data.vertices)
+        with exported_mesh(obj) as mesh:
+            verts = len(mesh.vertices)
         if verts > max_verts:
-            issues.append(Issue(obj.name, "Over vertex budget",
+            own = len(obj.data.vertices)
+            note = f" ({own:,} before modifiers)" if own != verts else ""
+            issues.append(Issue(obj.name, "Over vertex budget" + note,
                                 value=f"{verts:,} verts", target=f"{max_verts:,}"))
     return issues

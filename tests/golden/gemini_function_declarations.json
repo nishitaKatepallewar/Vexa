@@ -165,7 +165,7 @@
   },
   {
     "name": "detect_over_triangle_budget",
-    "description": "Finds meshes whose triangle count exceeds a budget.\n\nmax_tris: the maximum number of triangles allowed per mesh.",
+    "description": "Finds meshes whose triangle count exceeds a budget.\n\nmax_tris: the maximum number of triangles allowed per mesh, counted with\nmodifiers applied, as exported.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
@@ -179,7 +179,7 @@
   },
   {
     "name": "detect_over_vertex_budget",
-    "description": "Finds meshes whose vertex count exceeds a budget.\n\nmax_verts: the maximum number of vertices allowed per mesh, as counted in\nBlender. Engines count more where UV seams and hard edges split vertices.",
+    "description": "Finds meshes whose vertex count exceeds a budget.\n\nmax_verts: the maximum number of vertices allowed per mesh, as counted in\nBlender with modifiers applied. Engines count more where UV seams and hard\nedges split vertices.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
