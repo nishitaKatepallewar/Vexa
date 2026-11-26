@@ -455,7 +455,7 @@
   },
   {
     "name": "detect_unused_materials",
-    "description": "Finds materials in the file that no object uses. Checks the whole file, not just\nthe selection, and ignores Grease Pencil materials.",
+    "description": "Finds materials in the file that no object uses. Checks the whole file, not just\nthe selection, and ignores Grease Pencil materials and ones with a fake user.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -464,7 +464,7 @@
   },
   {
     "name": "remove_unused_materials",
-    "description": "Deletes every material in the file that nothing uses, including ones with a fake user.",
+    "description": "Deletes every material in the file that nothing uses, as Purge does.\n\nThese have no users, so Blender would drop them when saving anyway. Materials\nwith a fake user are kept.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

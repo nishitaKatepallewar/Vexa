@@ -401,13 +401,14 @@ def detect_too_many_materials(max_materials: int = 1) -> list:
 # ---------- unused materials ----------
 
 def _unused_materials() -> list:
-    """Local mesh materials nothing uses (a fake user doesn't count).
+    """Local mesh materials nothing uses.
 
-    Grease Pencil materials are skipped: they're never part of a mesh delivery, and
-    Blender's default file ships one with no users.
+    Materials with a fake user (the shield icon) were kept on purpose, so they count
+    as used, as in Blender's Purge. Grease Pencil materials are skipped: they're
+    never part of a mesh delivery, and Blender's default file ships one with no users.
     """
     return [m for m in bpy.data.materials
-            if m.library is None and not m.is_grease_pencil and m.users - int(m.use_fake_user) == 0]
+            if m.library is None and not m.is_grease_pencil and m.users == 0]
 
 
 @AgentTools.register_check(
@@ -419,7 +420,7 @@ def _unused_materials() -> list:
 )
 def detect_unused_materials() -> list:
     """Finds materials in the file that no object uses. Checks the whole file, not just
-    the selection, and ignores Grease Pencil materials."""
+    the selection, and ignores Grease Pencil materials and ones with a fake user."""
     names = sorted(m.name for m in _unused_materials())
     if not names:
         return []
@@ -428,15 +429,13 @@ def detect_unused_materials() -> list:
                   value=f"{len(names)} materials", target="0")]
 
 
-@AgentTools.register_fix(
-    "detect_unused_materials", display_name="Remove Unused Materials",
-    confirm=(
-        "Deletes every material in the file that nothing uses, including ones kept on purpose "
-        "with a fake user (the shield icon)."
-    ),
-)
+@AgentTools.register_fix("detect_unused_materials", display_name="Remove Unused Materials", safe=True)
 def remove_unused_materials(issues) -> str:
-    """Deletes every material in the file that nothing uses, including ones with a fake user."""
+    """Deletes every material in the file that nothing uses, as Purge does.
+
+    These have no users, so Blender would drop them when saving anyway. Materials
+    with a fake user are kept.
+    """
     unused = _unused_materials()
     for mat in unused:
         bpy.data.materials.remove(mat)
