@@ -78,5 +78,46 @@ def prefix_added_and_collision_names_follow():
     _, r = fix("detect_missing_name_prefix", prefix="SM_")
     assert r.status == "PASS" and col.name == "UCX_SM_Crate_01", col.name
 
+
+@test
+def skeletal_meshes_get_the_skeletal_prefix():
+    """Audit: Add Name Prefix renamed a skeletal mesh to SM_SK_Body."""
+    fresh()
+    rig = bpy.data.objects.new("Rig", bpy.data.armatures.new("Rig"))
+    bpy.context.scene.collection.objects.link(rig)
+    for name, loc in (("SK_Body", (0, 0, 0)), ("Hair", (3, 0, 0))):
+        cube(name, loc=loc).modifiers.new("Armature", "ARMATURE").object = rig
+    cube("Crate", loc=(6, 0, 0))
+    cube("UCX_Crate_01", loc=(6, 0, 0))
+    cube("UCX_Crate2_01", loc=(9, 0, 0))  # belongs to another mesh, Crate2
+    _, r = run("detect_missing_name_prefix")
+    assert {i.object_name: i.message for i in r.issues} == {
+        "Hair": "Missing SK_ prefix (skeletal mesh)", "Crate": "Missing SM_ prefix (mesh)"}, r.issues
+    assert r.fix_safe
+    msg, r = fix("detect_missing_name_prefix")
+    assert r.status == "PASS", (msg, r.issues)
+    names = sorted(o.name for o in bpy.data.objects)
+    assert names == ["Rig", "SK_Body", "SK_Hair", "SM_Crate", "UCX_Crate2_01", "UCX_SM_Crate_01"], names
+    _, r = run("detect_missing_name_prefix", skeletal_prefix="")
+    assert r.status == "PASS"
+
+
+
+@test
+def default_names_from_other_apps_and_materials():
+    """Audit: Material.001 and Maya or import names like pCube1 passed."""
+    fresh()
+    for i, name in enumerate(["pCube1", "polySurface12", "Box001", "geometry_0", "Object_12",
+                              "SM_Crate", "Cube_Lid", "Box", "pCubeLid"]):
+        obj = cube(name, loc=(i * 3, 0, 0))
+    obj.data.materials.append(bpy.data.materials.new("Material.001"))
+    obj.data.materials.append(bpy.data.materials.new("lambert2"))
+    obj.data.materials.append(bpy.data.materials.new("M_Lid"))
+    _, r = run("detect_default_names")
+    flagged = [i.value for i in r.issues]
+    assert flagged == ["pCube1", "polySurface12", "Box001", "geometry_0", "Object_12",
+                       "Material.001", "lambert2"], flagged
+
+
 if __name__ == "__main__":
     main(globals())

@@ -43,6 +43,37 @@ def missing_textures():
 
 
 @test
+def missing_textures_inside_groups_and_unsaved_bakes():
+    """Audit: a missing image inside a node group, and a bake never saved, both passed."""
+    import tempfile
+    fresh()
+    c = cube()
+    mat = bpy.data.materials.new("M_Crate")
+    if mat.node_tree is None:
+        mat.use_nodes = True
+    c.data.materials.append(mat)
+    group = bpy.data.node_groups.new("Wear", "ShaderNodeTree")
+    gone = bpy.data.images.new("T_Wear", 4, 4)
+    gone.source, gone.filepath = "FILE", "/nonexistent/T_Wear.png"
+    group.nodes.new("ShaderNodeTexImage").image = gone
+    mat.node_tree.nodes.new("ShaderNodeGroup").node_tree = group
+    mat.node_tree.nodes.new("ShaderNodeTexImage").image = bpy.data.images.new("T_Bake_AO", 8, 8)
+    with tempfile.TemporaryDirectory() as d:
+        saved = bpy.data.images.new("T_Saved", 8, 8)
+        saved.filepath_raw, saved.file_format = os.path.join(d, "T_Saved.png"), "PNG"
+        saved.save()
+        saved.source = "FILE"
+        saved.reload()
+        mat.node_tree.nodes.new("ShaderNodeTexImage").image = saved
+        _, r = run("detect_missing_textures")
+        assert r.issues[0].message == ("Missing: M_Crate: T_Wear, M_Crate: T_Bake_AO (made in Blender and "
+                                       "never saved)"), r.issues
+        saved.pixels[0] = 0.5  # painted or baked into, not saved yet
+        _, r = run("detect_missing_textures")
+        assert "T_Saved (has unsaved changes)" in r.issues[0].message, r.issues
+
+
+@test
 def normal_map_in_srgb_is_flagged_and_fixed():
     _crate_with_textures()
     _, r = run("detect_color_space_issues")
@@ -144,9 +175,15 @@ def slots_a_modifier_uses_are_kept():
     solidify = plane.modifiers.new("Solidify", "SOLIDIFY")
     solidify.use_rim, solidify.material_offset_rim = True, 1
     _, r = run("detect_unused_material_slots")
+    assert r.status == "PASS", r.issues  # the exported mesh's rim uses M_Rim
+    # A slot nothing uses, before the rim's: removing it would shift the rim's offset.
+    plane.data.materials.append(bpy.data.materials.new("M_Rim2"))
+    solidify.material_offset_rim = 2
+    _, r = run("detect_unused_material_slots")
+    assert r.issues[0].message == "Material slots: 1 unused", r.issues
     assert not r.fixable and "Solidify" in r.issues[0].no_fix, r.issues
     fix("detect_unused_material_slots")
-    assert [s.material.name for s in plane.material_slots] == ["M_Face", "M_Rim"]
+    assert [s.material.name for s in plane.material_slots] == ["M_Face", "M_Rim", "M_Rim2"]
 
 
 

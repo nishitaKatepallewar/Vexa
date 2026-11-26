@@ -32,6 +32,16 @@ def collision_base(name: str):
     return None
 
 
+def is_skeletal(obj) -> bool:
+    """True for skinned meshes: deformed by an armature, so exported as skeletal meshes.
+
+    A mesh merely parented to a bone (a sword in a hand) stays a static mesh.
+    """
+    if obj.parent is not None and obj.parent.type == "ARMATURE" and obj.parent_type == "ARMATURE":
+        return True
+    return any(m.type == "ARMATURE" and m.object is not None for m in obj.modifiers)
+
+
 @dataclass
 class CheckScope:
     """The objects a check runs on.

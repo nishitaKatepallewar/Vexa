@@ -6,10 +6,21 @@ import bpy
 
 from ..core.registry import AgentTools
 from ..core.results import Issue
-from ..core.scope import COLLISION_PREFIXES, collision_base, current, is_collision_name
+from ..core.scope import collision_base, current, is_collision_name, is_skeletal
 
+# Names nobody chose: Blender's primitives, Maya's (pCube1, polySurface12), 3ds Max's
+# (Box001) and what importers make up (geometry_0, Object_12).
 DEFAULT_NAME = re.compile(
     r"^(Cube|Sphere|Icosphere|Cylinder|Plane|Cone|Torus|Circle|Grid|Monkey|Suzanne|Mesh|Object)(\.\d+)?$"
+    r"|^(p(Cube|Sphere|Cylinder|Cone|Plane|Torus|Pipe|Prism|Pyramid|Helix|Disc|Platonic|SolidBox)"
+    r"|polySurface|polyMesh)\d+$"
+    r"|^(Box|Sphere|GeoSphere|Cylinder|Cone|Plane|Torus|Teapot|Tube|Pyramid|ChamferBox)\d{3}$"
+    r"|^(geometry|mesh|Mesh|object|Object|node|Node)_?\d+(\.\d+)?$"
+)
+# Materials nobody named: Blender's, Maya's and 3ds Max's defaults.
+DEFAULT_MATERIAL_NAME = re.compile(
+    r"^(Material(\.\d+)?|(lambert|blinn|phong|phongE|standardSurface|aiStandardSurface)\d+"
+    r"|Material #\d+|\d+ - Default|DefaultMaterial|default)$"
 )
 
 
@@ -18,14 +29,24 @@ DEFAULT_NAME = re.compile(
 @AgentTools.register_check(
     display_name="Detect Default Names",
     category="Naming",
-    why="Names like Cube.003 become asset names in engine. Reviewers and teammates "
-        "can't tell what anything is.",
+    why="Names like Cube.003 or Material.001 become asset and material names in engine. "
+        "Reviewers and teammates can't tell what anything is.",
     pass_text="None",
 )
 def detect_default_names() -> list:
-    """Finds meshes still using Blender's default names (Cube.001, Plane, …)."""
-    return [Issue(o.name, "Default name", value=o.name, target="descriptive name")
-            for o in current().meshes if DEFAULT_NAME.match(o.name)]
+    """Finds meshes and materials still using default names: Cube.001, pCube1, Box001,
+    geometry_0, Material.001, lambert1…"""
+    issues, seen = [], set()
+    for obj in current().meshes:
+        if DEFAULT_NAME.match(obj.name):
+            issues.append(Issue(obj.name, "Default name", value=obj.name, target="descriptive name"))
+        for slot in obj.material_slots:
+            mat = slot.material
+            if mat and mat.name not in seen and DEFAULT_MATERIAL_NAME.match(mat.name):
+                seen.add(mat.name)
+                issues.append(Issue(obj.name, f"Material '{mat.name}' has a default name", value=mat.name,
+                                    target="descriptive name"))
+    return issues
 
 
 # ---------- allowed characters ----------
@@ -140,39 +161,39 @@ def fix_invalid_names(issues) -> str:
 @AgentTools.register_check(
     display_name="Detect Missing Name Prefix",
     category="Naming",
-    why="Studios and Unreal's style guide use prefixes like SM_ for static meshes so "
-        "assets sort and filter correctly in the content browser.",
+    why="Studios and Unreal's style guide use prefixes like SM_ for static meshes and SK_ "
+        "for skeletal meshes, so assets sort and filter correctly in the content browser.",
     pass_text="All prefixed",
 )
-def detect_missing_name_prefix(prefix: str = "SM_") -> list:
+def detect_missing_name_prefix(prefix: str = "SM_", skeletal_prefix: str = "SK_") -> list:
     """Finds render meshes missing a required name prefix. Collision meshes are ignored.
 
-    prefix: the prefix every render mesh name must start with.
+    prefix: the prefix every static mesh name must start with.
+    skeletal_prefix: the prefix for skinned (skeletal) meshes. Empty: not checked.
     """
-    return [Issue(o.name, f"Missing {prefix} prefix", value=o.name, target=f"{prefix}…")
-            for o in current().meshes if not o.name.startswith(prefix)]
+    issues = []
+    for obj in current().meshes:
+        want = skeletal_prefix if is_skeletal(obj) else prefix
+        if want and not obj.name.startswith(want):
+            kind = "skeletal mesh" if is_skeletal(obj) else "mesh"
+            issues.append(Issue(obj.name, f"Missing {want} prefix ({kind})", value=obj.name, target=f"{want}…"))
+    return issues
 
 
-@AgentTools.register_fix(
-    "detect_missing_name_prefix", display_name="Add Name Prefix",
-    confirm=(
-        "Adds the target's prefix (such as SM_) to each flagged mesh name and renames its "
-        "collision meshes to match. Skeletal meshes are renamed too, even if they should use "
-        "another prefix such as SK_."
-    ),
-)
-def add_name_prefix(issues, prefix: str = "SM_") -> str:
-    """Adds the prefix to flagged meshes and renames their collision meshes to match."""
-    scope = current()
+@AgentTools.register_fix("detect_missing_name_prefix", display_name="Add Name Prefix", safe=True)
+def add_name_prefix(issues, prefix: str = "SM_", skeletal_prefix: str = "SK_") -> str:
+    """Adds the prefix to flagged meshes (SK_ for skeletal ones) and renames their
+    collision meshes to match, wherever they are in the scene."""
+    scene = current().scene
     renamed = 0
     for issue in issues:
-        obj = scope.scene.objects.get(issue.object_name)
-        if obj and not obj.name.startswith(prefix):
-            old = obj.name
-            obj.name = prefix + old
-            for col in scope.collision:
-                for p in COLLISION_PREFIXES:
-                    if col.name.startswith(p + old):
-                        col.name = p + prefix + col.name[len(p):]
-            renamed += 1
-    return f"Added {prefix} to {renamed} objects"
+        obj = scene.objects.get(issue.object_name)
+        want = (skeletal_prefix if obj and is_skeletal(obj) else prefix) if obj else ""
+        if not want or obj.name.startswith(want):
+            continue
+        old = obj.name
+        obj.name = want + old
+        for col in [o for o in scene.objects if is_collision_name(o.name) and collision_base(o.name) == old]:
+            col.name = col.name[:4] + want + col.name[4:]
+        renamed += 1
+    return f"Added a prefix to {renamed} objects"

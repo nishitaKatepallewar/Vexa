@@ -240,18 +240,83 @@ def detect_flipped_uvs(allow_overlapping: bool = True) -> list:
 
 # ---------- lightmap ----------
 
+# Most texels the overlap test samples for one mesh; above this the resolution drops.
+_MAX_SAMPLES = 20_000_000
+
+
+def _overlapping_uv_faces(mesh, layer, resolution: int) -> tuple:
+    """Faces whose UVs overlap other faces, and the share of covered texels involved.
+
+    Lighting is baked per texel, so the UV layout is rasterised at `resolution`
+    texels a side: a texel overlaps if its centre is strictly inside triangles of
+    two or more faces. Faces that only share an edge never count, since a centre on
+    their shared edge is inside neither.
+    """
+    if not len(mesh.polygons):
+        return [], 0.0
+    uv = np.zeros(len(mesh.loops) * 2, dtype=np.float32)
+    layer.data.foreach_get("uv", uv)
+    uv = uv.reshape(-1, 2).astype(np.float64)
+    starts, totals, face_of_loop = _face_loops(mesh)
+    corner = np.arange(len(uv)) - starts[face_of_loop]
+    fan = (corner >= 1) & (corner <= totals[face_of_loop] - 2)
+    tri_face = face_of_loop[fan]
+    a, b, c = uv[starts[tri_face]], uv[fan], uv[np.nonzero(fan)[0] + 1]
+
+    while True:
+        lo = np.floor(np.minimum(np.minimum(a, b), c) * resolution - 0.5).astype(np.int64) + 1
+        hi = np.floor(np.maximum(np.maximum(a, b), c) * resolution - 0.5).astype(np.int64)
+        lo, hi = np.clip(lo, 0, resolution - 1), np.clip(hi, 0, resolution - 1)
+        span = np.maximum(hi - lo + 1, 0)
+        counts = span[:, 0] * span[:, 1]
+        if counts.sum() <= _MAX_SAMPLES or resolution <= 64:
+            break
+        resolution //= 2
+    tri = np.repeat(np.arange(len(tri_face)), counts)
+    if not len(tri):
+        return [], 0.0
+    offset = np.arange(len(tri)) - np.repeat(np.cumsum(counts) - counts, counts)
+    width = np.maximum(span[tri, 0], 1)
+    px = lo[tri, 0] + offset % width
+    py = lo[tri, 1] + offset // width
+    point = (np.column_stack([px, py]) + 0.5) / resolution
+
+    def edge(p, q, r):
+        return (q[:, 0] - p[:, 0]) * (r[:, 1] - p[:, 1]) - (q[:, 1] - p[:, 1]) * (r[:, 0] - p[:, 0])
+
+    ta, tb, tc = a[tri], b[tri], c[tri]
+    w0, w1, w2 = edge(tb, tc, point), edge(tc, ta, point), edge(ta, tb, point)
+    eps = 1e-9
+    inside = ((w0 > eps) & (w1 > eps) & (w2 > eps)) | ((w0 < -eps) & (w1 < -eps) & (w2 < -eps))
+    texel = (py * resolution + px)[inside]
+    owner = tri_face[tri[inside]]
+    # Count each face once per texel (a face's own triangles never overlap each other).
+    pairs = np.unique(texel * len(starts) + owner)
+    texel, owner = pairs // len(starts), pairs % len(starts)
+    per_texel = np.bincount(texel, minlength=resolution * resolution)
+    covered = int(np.count_nonzero(per_texel))
+    shared = per_texel[texel] > 1
+    if not covered or not shared.any():
+        return [], 0.0
+    overlapped = int(np.count_nonzero(per_texel > 1))
+    return np.unique(owner[shared]).tolist(), 100.0 * overlapped / covered
+
+
 @AgentTools.register_check(
     display_name="Detect Lightmap UV Issues",
     category="UVs",
-    why="Unreal bakes lighting from the second UV channel. If it's missing or spills "
-        "outside 0–1, lighting builds fail or bake black and blotchy.",
+    why="Unreal bakes lighting from the second UV channel. If it's missing, spills "
+        "outside 0–1, or overlaps, lighting bakes black, blotchy or bleeding.",
     severity="ERROR",
-    pass_text="Present, in 0–1",
+    pass_text="Present, in 0–1, no overlaps",
 )
-def detect_missing_lightmap_uvs(channel: int = 1) -> list:
-    """Finds meshes without a lightmap UV channel, or whose lightmap UVs leave 0–1.
+def detect_missing_lightmap_uvs(channel: int = 1, resolution: int = 512) -> list:
+    """Finds meshes without a lightmap UV channel, or whose lightmap UVs leave 0–1 or
+    overlap.
 
     channel: index of the lightmap UV map (Unreal uses 1, the second map).
+    resolution: texels a side used to test for overlaps. Every face needs its own
+    space in a lightmap; faces that share texels at this size are flagged.
     """
     issues = []
     for obj in current().meshes:
@@ -265,4 +330,9 @@ def detect_missing_lightmap_uvs(channel: int = 1) -> list:
         if uv.size and (uv.min() < -1e-4 or uv.max() > 1 + 1e-4):
             issues.append(Issue(obj.name, f"Lightmap UVs (UV{channel}) outside 0–1",
                                 value=f"range {uv.min():.2f}–{uv.max():.2f}", target="0–1"))
+        faces, percent = _overlapping_uv_faces(obj.data, layers[channel], resolution)
+        if faces:
+            issues.append(Issue(obj.name, f"Lightmap UVs (UV{channel}) overlap on {len(faces)} faces",
+                                value=f"{percent:.1f}% of texels", target="0%", element="FACE",
+                                indices=faces))
     return issues

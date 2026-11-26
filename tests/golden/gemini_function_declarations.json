@@ -71,7 +71,7 @@
   },
   {
     "name": "detect_nonplanar_faces",
-    "description": "Finds quads and n-gons whose vertices don't lie on one plane.\n\nthreshold_deg: how far (in degrees) a vertex may bend out of the face's plane.",
+    "description": "Finds quads and n-gons whose vertices don't lie on one plane.\n\nthreshold_deg: how far (in degrees) a vertex may bend out of the face's plane.\nSlight bends are normal on organic models and harmless; 5\u00b0 flags faces whose\ndiagonal choice visibly changes the shape.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
@@ -165,7 +165,7 @@
   },
   {
     "name": "detect_over_triangle_budget",
-    "description": "Finds meshes whose triangle count exceeds a budget.\n\nmax_tris: the maximum number of triangles allowed per mesh.",
+    "description": "Finds meshes whose triangle count exceeds a budget.\n\nmax_tris: the maximum number of triangles allowed per mesh, counted with\nmodifiers applied, as exported.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
@@ -179,7 +179,7 @@
   },
   {
     "name": "detect_over_vertex_budget",
-    "description": "Finds meshes whose vertex count exceeds a budget.\n\nmax_verts: the maximum number of vertices allowed per mesh, as counted in\nBlender. Engines count more where UV seams and hard edges split vertices.",
+    "description": "Finds meshes whose vertex count exceeds a budget.\n\nmax_verts: the maximum number of vertices allowed per mesh, as counted in\nBlender with modifiers applied. Engines count more where UV seams and hard\nedges split vertices.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
@@ -193,7 +193,7 @@
   },
   {
     "name": "detect_unapplied_transforms",
-    "description": "Finds meshes whose scale isn't 1, or whose rotation isn't 0.\n\ncheck_rotation: also require rotation to be applied, not just scale.\ncheck_location: also require the mesh to sit at the world origin (location 0, 0, 0).",
+    "description": "Finds meshes whose scale isn't 1, or whose rotation isn't 0.\n\ncheck_rotation: also require rotation to be applied, not just scale.\ncheck_location: also require the asset to sit at the world origin (location 0, 0, 0).\nOnly top-level objects are checked for this: a part parented to another object,\nlike a wheel on a cart, is placed by its parent.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
@@ -338,13 +338,17 @@
   },
   {
     "name": "detect_missing_lightmap_uvs",
-    "description": "Finds meshes without a lightmap UV channel, or whose lightmap UVs leave 0\u20131.\n\nchannel: index of the lightmap UV map (Unreal uses 1, the second map).",
+    "description": "Finds meshes without a lightmap UV channel, or whose lightmap UVs leave 0\u20131 or\noverlap.\n\nchannel: index of the lightmap UV map (Unreal uses 1, the second map).\nresolution: texels a side used to test for overlaps. Every face needs its own\nspace in a lightmap; faces that share texels at this size are flagged.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
         "channel": {
           "type": "INTEGER",
           "description": "Parameter channel"
+        },
+        "resolution": {
+          "type": "INTEGER",
+          "description": "Parameter resolution"
         }
       },
       "required": []
@@ -352,7 +356,7 @@
   },
   {
     "name": "detect_missing_textures",
-    "description": "Finds Image Texture nodes with no image assigned, or whose file is missing.",
+    "description": "Finds Image Texture nodes with no image, a missing file, or an image that was\nmade or changed in Blender and not saved (e.g. a bake). Looks inside node groups.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -473,7 +477,7 @@
   },
   {
     "name": "detect_default_names",
-    "description": "Finds meshes still using Blender's default names (Cube.001, Plane, \u2026).",
+    "description": "Finds meshes and materials still using default names: Cube.001, pCube1, Box001,\ngeometry_0, Material.001, lambert1\u2026",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -505,13 +509,17 @@
   },
   {
     "name": "detect_missing_name_prefix",
-    "description": "Finds render meshes missing a required name prefix. Collision meshes are ignored.\n\nprefix: the prefix every render mesh name must start with.",
+    "description": "Finds render meshes missing a required name prefix. Collision meshes are ignored.\n\nprefix: the prefix every static mesh name must start with.\nskeletal_prefix: the prefix for skinned (skeletal) meshes. Empty: not checked.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
         "prefix": {
           "type": "STRING",
           "description": "Parameter prefix"
+        },
+        "skeletal_prefix": {
+          "type": "STRING",
+          "description": "Parameter skeletal_prefix"
         }
       },
       "required": []
@@ -519,7 +527,7 @@
   },
   {
     "name": "add_name_prefix",
-    "description": "Adds the prefix to flagged meshes and renames their collision meshes to match.",
+    "description": "Adds the prefix to flagged meshes (SK_ for skeletal ones) and renames their\ncollision meshes to match, wherever they are in the scene.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -537,7 +545,7 @@
   },
   {
     "name": "detect_missing_collision",
-    "description": "Finds meshes with no custom collision mesh (UCX_, UBX_, UCP_ or USP_<MeshName>_NN).\n\nCollision meshes are looked up in the whole scene, so selecting only the render\nmesh is enough.",
+    "description": "Finds static meshes with no custom collision mesh (UCX_, UBX_, UCP_ or\nUSP_<MeshName>_NN).\n\nCollision meshes are looked up in the whole scene, so selecting only the render\nmesh is enough. Skinned meshes are skipped: engines can't use UCX_ collision on\nskeletal meshes (Unreal uses a Physics Asset instead).",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
