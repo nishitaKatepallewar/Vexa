@@ -178,7 +178,7 @@ def unused_slots_fixed_on_objects_that_arent_selected():
     other.select_set(True)
     bpy.context.view_layer.objects.active = other
     msg, r = fix("detect_unused_material_slots")
-    assert msg == "Removed 2 unused slots" and r.status == "PASS", (msg, r.summary)
+    assert msg.startswith("Removed 2 unused slots") and r.status == "PASS", (msg, r.summary)
     assert [s.material.name for s in c.material_slots] == ["M_A"]
     # The artist's selection is left as it was.
     assert [o.name for o in bpy.context.selected_objects] == ["SM_Other"]
@@ -199,6 +199,24 @@ def unused_slots_skipped_on_objects_outside_the_view_layer():
     msg, r = fix("detect_unused_material_slots")
     assert msg == "Nothing to fix" and r.issues[0].no_fix == "not in the view layer", (msg, r.issues)
     assert len(c.material_slots) == 2
+
+
+@test
+def removing_slots_leaves_no_orphan_materials():
+    """Removing a material's last slot left it unused, so Unused Materials got worse."""
+    fresh()
+    c = cube()
+    c.data.materials.append(bpy.data.materials.new("M_Used"))
+    c.data.materials.append(bpy.data.materials.new("M_Spare"))
+    other = cube("SM_Other", loc=(5, 0, 0))
+    shared = bpy.data.materials.new("M_Shared")
+    c.data.materials.append(shared)
+    other.data.materials.append(shared)
+    bpy.data.materials["M_Spare"].use_fake_user = False
+    msg, r = fix("detect_unused_material_slots")
+    assert msg == "Removed 2 unused slots and 1 materials nothing uses now", msg
+    assert sorted(m.name for m in bpy.data.materials) == ["M_Shared", "M_Used"]
+    assert run("detect_unused_materials")[1].status == "PASS"
 
 
 @test

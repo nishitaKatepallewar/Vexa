@@ -479,21 +479,28 @@ def remove_unused_material_slots(issues) -> str:
 
     Objects with modifiers that may add faces with other materials (Solidify,
     Bevel, Boolean, Geometry Nodes…) are left: Blender's operator only looks at
-    the mesh's own faces, so it would remove slots those modifiers use.
+    the mesh's own faces, so it would remove slots those modifiers use. Materials
+    left with no users at all are removed too, as Blender would on save.
     """
     scene = current().scene
-    removed = 0
+    removed, materials = 0, set()
     for issue in issues:
         obj = scene.objects.get(issue.object_name)
         if not obj:
             continue
         before = len(obj.material_slots)
+        materials |= {slot.material for slot in obj.material_slots if slot.material}
         with _selected_alone(obj), bpy.context.temp_override(object=obj, active_object=obj):
             if not bpy.ops.object.material_slot_remove_unused.poll():
                 continue
             bpy.ops.object.material_slot_remove_unused()
         removed += before - len(obj.material_slots)
-    return f"Removed {removed} unused slots"
+    # Materials only those slots used now have no users: Blender drops them on save.
+    orphans = [m for m in materials if m.users == 0 and m.library is None]
+    for mat in orphans:
+        bpy.data.materials.remove(mat)
+    return f"Removed {removed} unused slots" + (
+        f" and {len(orphans)} materials nothing uses now" if orphans else "")
 
 
 # ---------- textured materials ----------
