@@ -258,6 +258,16 @@ def checks_look_at_the_mesh_as_exported():
 
 
 @test
+def nonplanar_ignores_slight_bends_by_default():
+    """Audit: at 0.001°, 7,864 of 7,872 quads on an organic model were flagged."""
+    fresh()
+    mesh_from("SM_Slight", [(0, 0, 0), (1, 0, 0), (1, 1, 0.02), (0, 1, 0)], [(0, 1, 2, 3)])  # ~1.1°
+    mesh_from("SM_Bent", [(3, 0, 0), (4, 0, 0), (4, 1, 0.5), (3, 1, 0)], [(0, 1, 2, 3)])  # ~19°
+    _, r = run("detect_nonplanar_faces")
+    assert [i.object_name for i in r.issues] == ["SM_Bent"], r.issues
+
+
+@test
 def intersecting_meshes_found():
     fresh()
     cube("SM_A")

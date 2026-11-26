@@ -199,10 +199,12 @@ def triangulate_meshes(issues) -> str:
     pass_text="None",
     is_quick_action=True,
 )
-def detect_nonplanar_faces(threshold_deg: float = 0.001) -> list:
+def detect_nonplanar_faces(threshold_deg: float = 5.0) -> list:
     """Finds quads and n-gons whose vertices don't lie on one plane.
 
     threshold_deg: how far (in degrees) a vertex may bend out of the face's plane.
+    Slight bends are normal on organic models and harmless; 5° flags faces whose
+    diagonal choice visibly changes the shape.
     """
     issues = []
     for obj in current().meshes:

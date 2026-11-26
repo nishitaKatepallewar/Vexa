@@ -71,7 +71,7 @@
   },
   {
     "name": "detect_nonplanar_faces",
-    "description": "Finds quads and n-gons whose vertices don't lie on one plane.\n\nthreshold_deg: how far (in degrees) a vertex may bend out of the face's plane.",
+    "description": "Finds quads and n-gons whose vertices don't lie on one plane.\n\nthreshold_deg: how far (in degrees) a vertex may bend out of the face's plane.\nSlight bends are normal on organic models and harmless; 5\u00b0 flags faces whose\ndiagonal choice visibly changes the shape.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
