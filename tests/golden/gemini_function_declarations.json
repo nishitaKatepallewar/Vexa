@@ -364,6 +364,15 @@
     }
   },
   {
+    "name": "relink_missing_textures",
+    "description": "Points each missing image at the file with the same name in the .blend's folder\nor its subfolders, only when exactly one such file exists.\n\nA stricter Find Missing Files: an image is never relinked to one of two files with\nthe same name. Images with no file (empty nodes, unsaved bakes) are left.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "detect_color_space_issues",
     "description": "Finds data maps (normal, roughness, metallic) set to sRGB, and colour maps set to Non-Color.\n\nFloat images (EXR, HDR) are skipped: they're linear on purpose.",
     "parameters": {

@@ -109,6 +109,43 @@ def color_space_leaves_float_and_dual_use_images():
 
 
 @test
+def missing_textures_relink_only_to_a_single_match():
+    import tempfile
+    from vexa.tools import texture_tools
+    fresh()
+    c = cube()
+    mat = bpy.data.materials.new("M_Crate")
+    if mat.node_tree is None:
+        mat.use_nodes = True
+    c.data.materials.append(mat)
+    images = {}
+    for name in ("T_Crate_D.png", "T_Crate_N.png"):
+        image = bpy.data.images.new(name, 4, 4)
+        image.source, image.filepath = "FILE", "C:\\Users\\artist\\old\\" + name  # moved from another PC
+        mat.node_tree.nodes.new("ShaderNodeTexImage").image = image
+        images[name] = image
+    _, r = run("detect_missing_textures")
+    assert not r.fixable and r.issues[0].no_fix.startswith("save the .blend first"), r.issues
+    with tempfile.TemporaryDirectory() as d:
+        for folder in ("textures", "textures/old", "backup"):
+            os.makedirs(os.path.join(d, folder))
+        pixels = bpy.data.images.new("px", 4, 4)
+        pixels.filepath_raw, pixels.file_format = os.path.join(d, "textures", "T_Crate_D.png"), "PNG"
+        pixels.save()
+        pixels.filepath_raw = os.path.join(d, "textures", "old", "T_Crate_N.png")
+        pixels.save()
+        pixels.filepath_raw = os.path.join(d, "backup", "T_Crate_N.png")  # a second T_Crate_N: ambiguous
+        pixels.save()
+        bpy.ops.wm.save_as_mainfile(filepath=os.path.join(d, "crate.blend"))
+        texture_tools._INDEX_CACHE.clear()
+        msg, r = fix("detect_missing_textures")
+        assert msg == "Relinked 1 images. Not found once in the project: T_Crate_N.png", msg
+        assert bpy.path.abspath(images["T_Crate_D.png"].filepath) == os.path.join(d, "textures", "T_Crate_D.png")
+        assert "artist/old" in images["T_Crate_N.png"].filepath, images["T_Crate_N.png"].filepath  # untouched
+        assert not r.fixable and "no single file" in r.issues[0].no_fix, r.issues
+
+
+@test
 def texture_sizes():
     _crate_with_textures()
     _, r = run("detect_invalid_texture_sizes")
