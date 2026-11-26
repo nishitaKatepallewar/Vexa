@@ -582,5 +582,14 @@
       },
       "required": []
     }
+  },
+  {
+    "name": "move_unwanted_objects",
+    "description": "Moves unwanted objects into a \"Not for export\" collection that is switched off.\n\nNothing is deleted. FBX and glTF exports skip switched-off collections, and so\ndo Vexa's checks. Tick the collection in the Outliner to bring them back.\nObjects with children stay where they are.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
   }
 ]
