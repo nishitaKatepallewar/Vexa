@@ -10,6 +10,7 @@ import numpy as np
 from mathutils.bvhtree import BVHTree
 from mathutils.geometry import distance_point_to_plane
 
+from ..core.nodes import material_nodes
 from ..core.registry import AgentTools
 from ..core.results import Issue
 from ..core.scope import current
@@ -240,6 +241,8 @@ def detect_open_edges() -> list:
 
 # ---------- flipped normals ----------
 
+INSIDE_OUT = "Inside out"
+
 def _pieces_with_parity(n_faces: int, face_a, face_b, disagree) -> tuple:
     """Connected pieces of faces, and each face's winding relative to its piece.
 
@@ -278,8 +281,12 @@ def _pieces_with_parity(n_faces: int, face_a, face_b, disagree) -> tuple:
     return roots, rel, {find(r) for r in conflicting}
 
 
-def _inward_faces(mesh) -> list:
-    """Indices of faces on closed parts of the mesh that point inwards.
+def _inward_faces(mesh) -> tuple:
+    """Faces on closed parts of the mesh that point inwards, as two sorted lists.
+
+    The first holds faces that disagree with most of their piece: clearly mistakes.
+    The second holds the inward faces of pieces that mostly face inwards: inside
+    out, or meant to be seen from inside, such as a room or a sky dome.
 
     For each closed piece (every edge shared by exactly two faces), neighbouring faces
     must walk their shared edge in opposite directions; that fixes every face's winding
@@ -290,7 +297,7 @@ def _inward_faces(mesh) -> list:
     """
     n_faces, n_loops = len(mesh.polygons), len(mesh.loops)
     if not n_faces:
-        return []
+        return [], []
     starts = np.zeros(n_faces, dtype=np.int64)
     totals = np.zeros(n_faces, dtype=np.int64)
     loop_verts = np.zeros(n_loops, dtype=np.int64)
@@ -325,7 +332,7 @@ def _inward_faces(mesh) -> list:
         is_open[list(conflicting)] = True
     closed = ~is_open[piece]
     if not closed.any():
-        return []
+        return [], []
 
     # Signed volume of each face as seen from its piece's centre (fan triangles).
     loop_piece = piece[face_of_loop]
@@ -347,7 +354,15 @@ def _inward_faces(mesh) -> list:
     # Faces whose winding disagrees with the one that encloses positive volume.
     outward_parity = np.where(volume > 0, 0, 1)
     inward = closed & has_inside[piece] & (parity != outward_parity[piece])
-    return np.nonzero(inward)[0].tolist()
+    if not inward.any():
+        return [], []
+    # A piece whose inward faces cover more than half its area is inside out as a whole.
+    area = np.zeros(n_faces, dtype=np.float64)
+    mesh.polygons.foreach_get("area", area)
+    inward_area = np.bincount(piece, weights=area * inward, minlength=n_faces)
+    total_area = np.bincount(piece, weights=area, minlength=n_faces)
+    whole = inward & (inward_area[piece] > 0.5 * total_area[piece])
+    return np.nonzero(inward & ~whole)[0].tolist(), np.nonzero(whole)[0].tolist()
 
 
 @AgentTools.register_check(
@@ -363,26 +378,38 @@ def detect_flipped_normals() -> list:
     """Finds faces whose normals point into the mesh instead of out of it.
 
     Only closed parts of a mesh are checked: on an open surface, such as a plane,
-    neither side is "outside".
+    neither side is "outside". Pieces that mostly face inwards are reported apart,
+    as inside out: they may be rooms or sky domes.
     """
     issues = []
     for obj in current().meshes:
-        idx = _inward_faces(obj.data)
-        if idx:
-            issues.append(Issue(obj.name, f"{len(idx)} faces point inwards", value=f"{len(idx)} faces",
-                                target="0", element="FACE", indices=idx))
+        flipped, inside_out = _inward_faces(obj.data)
+        if flipped:
+            issues.append(Issue(obj.name, f"{len(flipped)} faces point inwards", value=f"{len(flipped)} faces",
+                                target="0", element="FACE", indices=flipped))
+        if inside_out:
+            issues.append(Issue(obj.name, f"{INSIDE_OUT}: {len(inside_out)} faces face inwards",
+                                value=f"{len(inside_out)} faces", target="0", element="FACE",
+                                indices=inside_out))
     return issues
 
 
+def _normals_skip_reason(issue) -> str:
+    if issue.message.startswith(INSIDE_OUT):
+        return "most of the piece faces inwards: fine for rooms and sky domes, else flip it by hand"
+    return ""
+
+
 @AgentTools.register_fix(
-    "detect_flipped_normals", display_name="Flip Normals Outward", is_quick_action=True,
-    confirm=(
-        "Turns the flagged faces so they point out of the mesh. Rooms, sky domes and other "
-        "pieces meant to be seen from inside are turned outward too."
-    ),
+    "detect_flipped_normals", display_name="Flip Normals Outward", is_quick_action=True, safe=True,
+    skip_reason=_normals_skip_reason,
 )
 def flip_normals_outward(issues) -> str:
-    """Flips the faces that point inwards, so every face points out of the mesh."""
+    """Flips faces that point the other way from the rest of their piece.
+
+    Pieces that mostly face inwards are left: they may be meant to be seen from
+    inside, like a room or a sky dome.
+    """
     scene = current().scene
     total = 0
     for issue in issues:
@@ -421,26 +448,67 @@ def detect_color_attributes() -> list:
     return issues
 
 
+def _used_color_attributes(obj) -> dict:
+    """Colour attributes the object's materials read, as {name: material name}.
+
+    A Color Attribute node with no name reads the mesh's default colour attribute.
+    """
+    attrs = obj.data.color_attributes
+    default = getattr(attrs, "default_color_name", "") or (attrs[0].name if len(attrs) else "")
+    used = {}
+    for slot in obj.material_slots:
+        if slot.material is None:
+            continue
+        for node in material_nodes(slot.material):
+            if node.type == "VERTEX_COLOR":
+                name = node.layer_name or default
+            elif node.type == "ATTRIBUTE" and node.attribute_type == "GEOMETRY":
+                name = node.attribute_name
+            else:
+                continue
+            if name in attrs:
+                used.setdefault(name, slot.material.name)
+    return used
+
+
+def _color_skip_reason(issue) -> str:
+    obj = current().scene.objects.get(issue.object_name)
+    if obj is None:
+        return "not in the scene"
+    if any(m.type == "NODES" for m in obj.modifiers):
+        return "geometry nodes may read them"
+    used = _used_color_attributes(obj)
+    if used and len(used) == len(obj.data.color_attributes):
+        return "used by " + ", ".join(sorted(set(used.values())))
+    return ""
+
+
 @AgentTools.register_fix(
-    "detect_color_attributes", display_name="Remove Vertex Colors",
-    confirm=(
-        "Deletes every vertex colour layer on the flagged meshes, including ones a material "
-        "or the engine uses, for example as a mask."
-    ),
+    "detect_color_attributes", display_name="Remove Vertex Colors", safe=True,
+    skip_reason=_color_skip_reason,
 )
 def remove_color_attributes(issues) -> str:
-    """Removes every vertex colour attribute from the flagged meshes."""
+    """Removes the vertex colour attributes no material on the mesh reads.
+
+    Colours a material uses (Color Attribute or Attribute node, also inside node
+    groups) are kept: removing them would change how the asset looks.
+    """
     scene = current().scene
-    removed = 0
+    removed, kept = 0, 0
     for issue in issues:
         obj = scene.objects.get(issue.object_name)
         if not obj:
             continue
         attrs = obj.data.color_attributes
+        used = _used_color_attributes(obj)
         for name in [attr.name for attr in attrs]:
+            if name in used:
+                kept += 1
+                continue
             attrs.remove(attrs[name])
             removed += 1
-    return f"Removed {removed} vertex color attributes"
+    msg = f"Removed {removed} vertex color attributes"
+    return msg + (f", kept {kept} a material uses" if kept else "")
 
 
 # ---------- unapplied modifiers ----------

@@ -83,12 +83,63 @@ def flipped_normals_detect_and_fix():
     plane = mesh_from("SM_PlaneDown", [(0, 0, 0), (0, 1, 0), (1, 1, 0), (1, 0, 0)], [(0, 1, 2, 3)])
     assert plane.data.polygons[0].normal.z < 0  # open surface: not judged
     _, r = run("detect_flipped_normals")
-    found = {i.object_name: i.indices for i in r.issues}
-    assert r.status == "ERROR" and found == {"SM_OneFlipped": [2], "SM_InsideOut": list(range(6))}, found
+    found = {i.object_name: (i.message, i.indices) for i in r.issues}
+    assert r.status == "ERROR" and found == {"SM_OneFlipped": ("1 faces point inwards", [2]),
+                                             "SM_InsideOut": ("Inside out: 6 faces face inwards",
+                                                              list(range(6)))}, found
+    assert [i.object_name for i in r.issues if i.no_fix] == ["SM_InsideOut"], r.issues
     msg, r = fix("detect_flipped_normals")
-    assert r.status == "PASS" and msg == "Flipped 7 faces", (msg, r.summary)
-    for obj in (good, one, inside_out):  # every face now points away from the centre
+    assert msg.startswith("Flipped 1 faces. Left for you: SM_InsideOut (most of the piece"), msg
+    assert [i.object_name for i in r.issues] == ["SM_InsideOut"] and not r.fixable, r.issues
+    for obj in (good, one):  # every face now points away from the centre
         assert all(p.normal.dot(p.center) > 0 for p in obj.data.polygons), obj.name
+    assert all(p.normal.dot(p.center) < 0 for p in inside_out.data.polygons)  # left as it was
+
+
+@test
+def a_room_is_never_turned_inside_out():
+    """Audit: Flip Normals Outward turned an interior (all faces inward) outward."""
+    fresh()
+    room = cube("SM_Room", size=6)
+    _flip(room, [0, 1, 2, 3, 4])  # five walls face in; one was modelled the wrong way round
+    _, r = run("detect_flipped_normals")
+    assert len(r.issues) == 1 and r.issues[0].message.startswith("Inside out") and not r.fixable, r.issues
+    before = [tuple(p.normal) for p in room.data.polygons]
+    fix("detect_flipped_normals")
+    assert [tuple(p.normal) for p in room.data.polygons] == before
+
+
+def _node_material(name):
+    mat = bpy.data.materials.new(name)
+    if mat.node_tree is None:  # Blender 4.x; 5.x materials always have nodes
+        mat.use_nodes = True
+    return mat
+
+
+@test
+def vertex_colors_a_material_uses_are_kept():
+    """Audit: Remove Vertex Colors deleted a mask the material used."""
+    fresh()
+    c = cube()
+    c.data.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
+    c.data.color_attributes.new("Mask", "BYTE_COLOR", "CORNER")
+    mat = _node_material("M_Painted")
+    group = bpy.data.node_groups.new("Blend", "ShaderNodeTree")  # the mask is read inside a group
+    group.nodes.new("ShaderNodeVertexColor").layer_name = "Mask"
+    mat.node_tree.nodes.new("ShaderNodeGroup").node_tree = group
+    c.data.materials.append(mat)
+    msg, r = fix("detect_color_attributes")
+    assert [a.name for a in c.data.color_attributes] == ["Mask"], msg
+    assert msg == "Removed 1 vertex color attributes, kept 1 a material uses", msg
+    assert not r.fixable and r.issues[0].no_fix == "used by M_Painted", r.issues
+
+    other = cube("SM_Default", loc=(5, 0, 0))
+    other.data.color_attributes.new("Tint", "BYTE_COLOR", "CORNER")
+    mat2 = _node_material("M_Tint")
+    mat2.node_tree.nodes.new("ShaderNodeVertexColor")  # no name: reads the default colour
+    other.data.materials.append(mat2)
+    _, r = run("detect_color_attributes", objs=[other])
+    assert not r.fixable and r.issues[0].no_fix == "used by M_Tint", r.issues
 
 
 @test

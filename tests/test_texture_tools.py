@@ -52,6 +52,32 @@ def normal_map_in_srgb_is_flagged_and_fixed():
 
 
 @test
+def color_space_leaves_float_and_dual_use_images():
+    c = _crate_with_textures()
+    nt = c.data.materials[0].node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    hdr = nt.nodes.new("ShaderNodeTexImage")
+    hdr.image = bpy.data.images.new("T_Albedo_EXR", 4, 4, float_buffer=True)
+    hdr.image.colorspace_settings.name = "Linear Rec.709"  # right for a float colour map
+    nt.links.new(hdr.outputs["Color"], bsdf.inputs["Base Color"])
+    _, r = run("detect_color_space_issues")
+    assert [i.value for i in r.issues] == ["T_Crate_N"], r.issues  # the EXR isn't flagged
+
+    # T_Crate_N also feeds Roughness in another material, set up as colour there.
+    other = bpy.data.materials.new("M_Other")
+    if other.node_tree is None:
+        other.use_nodes = True
+    node = other.node_tree.nodes.new("ShaderNodeTexImage")
+    node.image = bpy.data.images["T_Crate_N"]
+    other_bsdf = next(n for n in other.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    other.node_tree.links.new(node.outputs["Color"], other_bsdf.inputs["Base Color"])
+    _, r = run("detect_color_space_issues")
+    assert not r.fixable and r.issues[0].no_fix == "used both as a colour map and as a data map", r.issues
+    fix("detect_color_space_issues")
+    assert bpy.data.images["T_Crate_N"].colorspace_settings.name == "sRGB"
+
+
+@test
 def texture_sizes():
     _crate_with_textures()
     _, r = run("detect_invalid_texture_sizes")
@@ -103,8 +129,24 @@ def unused_slots_skipped_on_objects_outside_the_view_layer():
     c.data.materials.append(None)
     bpy.context.view_layer.layer_collection.children["Excluded"].exclude = True
     msg, r = fix("detect_unused_material_slots")
-    assert msg == "Removed 0 unused slots. Skipped (not in the view layer): SM_Crate", msg
+    assert msg == "Nothing to fix" and r.issues[0].no_fix == "not in the view layer", (msg, r.issues)
     assert len(c.material_slots) == 2
+
+
+@test
+def slots_a_modifier_uses_are_kept():
+    """Blender's Remove Unused Slots deletes a slot only a Solidify rim uses (4.2 and 5.2)."""
+    fresh()
+    bpy.ops.mesh.primitive_plane_add()
+    plane = bpy.context.active_object
+    for name in ("M_Face", "M_Rim"):
+        plane.data.materials.append(bpy.data.materials.new(name))
+    solidify = plane.modifiers.new("Solidify", "SOLIDIFY")
+    solidify.use_rim, solidify.material_offset_rim = True, 1
+    _, r = run("detect_unused_material_slots")
+    assert not r.fixable and "Solidify" in r.issues[0].no_fix, r.issues
+    fix("detect_unused_material_slots")
+    assert [s.material.name for s in plane.material_slots] == ["M_Face", "M_Rim"]
 
 
 
@@ -159,10 +201,11 @@ def unused_materials_detect_and_fix():
     bpy.data.materials.new("M_Kept").use_fake_user = True
     bpy.data.materials.create_gpencil_data(bpy.data.materials.new("GP_Stroke"))
     _, r = run("detect_unused_materials")
-    assert r.issues[0].message == "Unused materials: M_Kept, M_Orphan", r.issues
+    assert r.issues[0].message == "Unused materials: M_Orphan", r.issues  # a fake user means keep it
     msg, r = fix("detect_unused_materials")
-    assert r.status == "PASS" and msg == "Removed 2 unused materials", (msg, r.summary)
-    assert sorted(m.name for m in bpy.data.materials) == ["GP_Stroke", "M_Used"]
+    assert r.status == "PASS" and msg == "Removed 1 unused materials", (msg, r.summary)
+    # Audit: the fix deleted M_Kept. Blender's Purge keeps fake users, so Vexa does too.
+    assert sorted(m.name for m in bpy.data.materials) == ["GP_Stroke", "M_Kept", "M_Used"]
 
 
 if __name__ == "__main__":

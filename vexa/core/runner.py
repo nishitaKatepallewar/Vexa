@@ -41,8 +41,11 @@ def run_check(check_name: str, overrides: Optional[Dict], scope: scope_mod.Check
         with scope_mod.using(scope):
             issues: List[Issue] = check.func(**settings) or []
             if fix and fix.fix.skip_reason:
+                reason = fix.fix.skip_reason
+                accepted = inspect.signature(reason).parameters
+                kwargs = {k: v for k, v in settings.items() if k in accepted}
                 for issue in issues:
-                    issue.no_fix = fix.fix.skip_reason(issue) or ""
+                    issue.no_fix = reason(issue, **kwargs) or ""
     except Exception as e:  # noqa: BLE001 - one broken check must never stop a run
         return CheckResult(check_name, problem_title(check.display_name), "ERROR", f"Check failed: {e}",
                            why=check.check.why)
@@ -81,9 +84,19 @@ def apply_fix(result: CheckResult, overrides: Optional[Dict], scope: scope_mod.C
     kwargs = {k: v for k, v in settings.items() if k in accepted}
     with scope_mod.using(scope):
         message = fix.func(issues, **kwargs)
-    left = sorted({f"{i.object_name or 'scene'} ({i.no_fix})" for i in result.issues if i.no_fix})
+    left: Dict[str, List[str]] = {}
+    for issue in result.issues:
+        if issue.no_fix:
+            names = left.setdefault(issue.no_fix, [])
+            name = issue.object_name or "scene"
+            if name not in names:
+                names.append(name)
     if left:
-        message += ". Left for you: " + "; ".join(left[:5]) + ("…" if len(left) > 5 else "")
+        parts = []
+        for reason, names in left.items():
+            more = f" and {len(names) - 3} more" if len(names) > 3 else ""
+            parts.append(f"{', '.join(names[:3])}{more} ({reason})")
+        message += ". Left for you: " + "; ".join(parts)
     return message
 
 

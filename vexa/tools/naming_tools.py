@@ -6,7 +6,7 @@ import bpy
 
 from ..core.registry import AgentTools
 from ..core.results import Issue
-from ..core.scope import COLLISION_PREFIXES, current
+from ..core.scope import COLLISION_PREFIXES, collision_base, current, is_collision_name
 
 DEFAULT_NAME = re.compile(
     r"^(Cube|Sphere|Icosphere|Cylinder|Plane|Cone|Torus|Circle|Grid|Monkey|Suzanne|Mesh|Object)(\.\d+)?$"
@@ -69,29 +69,69 @@ def _sanitize(name: str, taken) -> str:
     return candidate
 
 
+def _collision_name(prefix: str, base: str, index: int, taken, keep: str = "") -> str:
+    """UCX_<base>_NN with the first free NN from index, so it keeps matching its mesh."""
+    n = max(index, 1)
+    while f"{prefix}{base}_{n:02d}" in taken and f"{prefix}{base}_{n:02d}" != keep:
+        n += 1
+    return f"{prefix}{base}_{n:02d}"
+
+
+def _collision_index(name: str) -> int:
+    match = re.search(r"_(\d+)(\.\d+)?$", name)
+    return int(match.group(1)) if match else 1
+
+
+def _names_skip_reason(issue) -> str:
+    """A collision mesh can't be renamed on its own if its mesh needs renaming too."""
+    if issue.message.startswith("Material"):
+        return ""
+    scope = current()
+    obj = scope.scene.objects.get(issue.value)
+    if obj is None or not is_collision_name(obj.name):
+        return ""
+    mesh = scope.scene.objects.get(collision_base(obj.name))
+    if mesh and mesh not in scope.meshes and _sanitize(mesh.name, ()) != mesh.name:
+        return f"its mesh {mesh.name} isn't being checked: check them together"
+    return ""
+
+
 @AgentTools.register_fix(
-    "detect_invalid_name_characters", display_name="Fix Invalid Names",
-    confirm=(
-        "Renames the flagged objects and materials, replacing spaces, dots and other "
-        "characters with underscores. A collision mesh that isn't part of this check keeps "
-        "its old name, so its link to the mesh can break."
-    ),
+    "detect_invalid_name_characters", display_name="Fix Invalid Names", safe=True,
+    skip_reason=_names_skip_reason,
 )
 def fix_invalid_names(issues) -> str:
-    """Replaces invalid characters in flagged object and material names with underscores."""
+    """Replaces invalid characters in flagged object and material names with underscores.
+
+    Collision meshes are renamed with their mesh (UCX_<new name>_NN), even if they
+    aren't part of the check, so the link between them never breaks.
+    """
     scene = current().scene
-    renamed = 0
+    renamed, mesh_names = 0, {}
+    flagged = {i.value for i in issues if not i.message.startswith("Material")}
     for issue in issues:
         if issue.message.startswith("Material"):
             mat = bpy.data.materials.get(issue.value)
             if mat:
                 mat.name = _sanitize(mat.name, bpy.data.materials)
                 renamed += 1
+            continue
+        obj = scene.objects.get(issue.value)
+        if obj and not is_collision_name(obj.name):
+            old = obj.name
+            obj.name = _sanitize(old, bpy.data.objects)
+            mesh_names[old] = obj.name
+            renamed += 1
+    for col in [o for o in scene.objects if o.type == "MESH" and is_collision_name(o.name)]:
+        old, base = col.name, collision_base(col.name)
+        if base not in mesh_names and old not in flagged:
+            continue
+        new_base = mesh_names.get(base, base)
+        if new_base in bpy.data.objects:  # keep it matching its mesh
+            col.name = _collision_name(old[:4], new_base, _collision_index(old), bpy.data.objects, keep=old)
         else:
-            obj = scene.objects.get(issue.value)
-            if obj:
-                obj.name = _sanitize(obj.name, bpy.data.objects)
-                renamed += 1
+            col.name = _sanitize(old, bpy.data.objects)
+        renamed += col.name != old
     return f"Renamed {renamed} items"
 
 

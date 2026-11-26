@@ -52,8 +52,9 @@ class FixInfo:
                  so Fix All may run it. False if the artist must confirm first.
     confirm:     for fixes that need care: what will change and when not to use it,
                  shown before the fix runs.
-    skip_reason: optional function(issue) -> str. A non-empty string is why the fix
-                 leaves that issue alone (e.g. "has modifiers"); the fix never sees it.
+    skip_reason: optional function(issue, **settings) -> str. A non-empty string is
+                 why the fix leaves that issue alone (e.g. "has modifiers"); the fix
+                 never sees it. Like the fix, it receives the check's settings it names.
     """
 
     check: str
@@ -175,8 +176,8 @@ class AgentTools:
                 by hand. Safe fixes run from Fix All; the others never do.
             confirm: required for fixes that aren't safe: what will change, and when
                 not to use it. Shown to the artist before the fix runs.
-            skip_reason: optional function(issue) -> str returning why the fix must
-                leave that issue alone, or "" if it can fix it.
+            skip_reason: optional function(issue, **settings) -> str returning why
+                the fix must leave that issue alone, or "" if it can fix it.
         """
         if safe and confirm:
             raise ValueError("register_fix: a safe fix runs without asking, so it has no confirm text")

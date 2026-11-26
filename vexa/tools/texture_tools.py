@@ -137,14 +137,17 @@ def _expected_color_space(node, tree):
     is_quick_action=True,
 )
 def detect_color_space_issues() -> list:
-    """Finds data maps (normal, roughness, metallic) set to sRGB, and colour maps set to Non-Color."""
+    """Finds data maps (normal, roughness, metallic) set to sRGB, and colour maps set to Non-Color.
+
+    Float images (EXR, HDR) are skipped: they're linear on purpose.
+    """
     issues, seen = [], set()
     for obj in current().meshes:
         for mat in _materials(obj):
             for node in _image_nodes(mat):
                 image = node.image
-                if image is None or image.name in seen:
-                    continue
+                if image is None or image.name in seen or image.is_float:
+                    continue  # float images (EXR, HDR) hold linear values on purpose
                 role, expected = _expected_color_space(node, mat.node_tree)
                 actual = image.colorspace_settings.name
                 if expected and actual != expected:
@@ -154,16 +157,29 @@ def detect_color_space_issues() -> list:
     return issues
 
 
+def _color_space_skip_reason(issue) -> str:
+    """An image used both as colour and as data can't have one right colour space."""
+    wanted = set()
+    for mat in bpy.data.materials:
+        for node in _image_nodes(mat):
+            if node.image is not None and node.image.name == issue.value:
+                wanted.add(_expected_color_space(node, mat.node_tree)[1])
+    wanted.discard(None)
+    if len(wanted) > 1:
+        return "used both as a colour map and as a data map"
+    return ""
+
+
 @AgentTools.register_fix(
-    "detect_color_space_issues", display_name="Fix Color Spaces",
-    confirm=(
-        "Sets each flagged image to the colour space its role needs: Non-Color for normal, "
-        "roughness and metallic maps, sRGB for colour maps. The role comes from the socket "
-        "the image is plugged into."
-    ),
+    "detect_color_space_issues", display_name="Fix Color Spaces", safe=True,
+    skip_reason=_color_space_skip_reason,
 )
 def fix_color_spaces(issues) -> str:
-    """Sets each flagged image to the colour space its role needs."""
+    """Sets each flagged image to the colour space its role needs.
+
+    The role comes from the socket the image is plugged into directly: Base Color
+    means sRGB; Normal Map, Bump, Roughness and Metallic mean Non-Color.
+    """
     fixed = 0
     for issue in issues:
         image = bpy.data.images.get(issue.value)
@@ -314,24 +330,47 @@ def _selected_alone(obj):
         view_layer.objects.active = was_active
 
 
+# Modifiers that never add faces with other materials. Any other modifier may, e.g.
+# Solidify's rim and shell offsets, Bevel's material, Boolean, Array caps, Geometry
+# Nodes, so a slot no face of the mesh uses can still be used in the export.
+_MATERIAL_NEUTRAL_MODIFIERS = {
+    "ARMATURE", "SUBSURF", "MULTIRES", "TRIANGULATE", "MIRROR", "WEIGHTED_NORMAL", "EDGE_SPLIT",
+    "DECIMATE", "SMOOTH", "LAPLACIANSMOOTH", "CORRECTIVE_SMOOTH", "DISPLACE", "SHRINKWRAP", "CAST",
+    "SIMPLE_DEFORM", "LATTICE", "CURVE", "HOOK", "WARP", "WAVE", "MESH_DEFORM", "SURFACE_DEFORM",
+    "UV_PROJECT", "UV_WARP", "NORMAL_EDIT", "WELD",
+}
+
+
+def _slots_skip_reason(issue) -> str:
+    obj = current().scene.objects.get(issue.object_name)
+    if obj is None:
+        return "not in the scene"
+    if obj.name not in bpy.context.view_layer.objects:
+        return "not in the view layer"
+    if "unused" not in issue.message:
+        return "empty slots used by faces need a material assigned by hand"
+    others = [m.name for m in obj.modifiers if m.type not in _MATERIAL_NEUTRAL_MODIFIERS]
+    if others:
+        return f"modifiers may use the slots ({', '.join(others[:3])})"
+    return ""
+
+
 @AgentTools.register_fix(
-    "detect_unused_material_slots", display_name="Remove Unused Material Slots",
-    confirm=(
-        "Removes material slots no face uses, with Blender's Remove Unused Slots. That also "
-        "removes slots only a modifier uses, such as a Solidify rim material."
-    ),
+    "detect_unused_material_slots", display_name="Remove Unused Material Slots", safe=True,
+    skip_reason=_slots_skip_reason,
 )
 def remove_unused_material_slots(issues) -> str:
-    """Removes slots no face uses. Empty slots that faces use need a material assigned by hand."""
+    """Removes slots no face uses, with Blender's Remove Unused Slots.
+
+    Objects with modifiers that may add faces with other materials (Solidify,
+    Bevel, Boolean, Geometry Nodes…) are left: Blender's operator only looks at
+    the mesh's own faces, so it would remove slots those modifiers use.
+    """
     scene = current().scene
-    view_layer_objects = bpy.context.view_layer.objects
-    removed, skipped = 0, []
+    removed = 0
     for issue in issues:
         obj = scene.objects.get(issue.object_name)
         if not obj:
-            continue
-        if obj.name not in view_layer_objects:  # e.g. in an excluded collection: can't be selected
-            skipped.append(obj.name)
             continue
         before = len(obj.material_slots)
         with _selected_alone(obj), bpy.context.temp_override(object=obj, active_object=obj):
@@ -339,10 +378,7 @@ def remove_unused_material_slots(issues) -> str:
                 continue
             bpy.ops.object.material_slot_remove_unused()
         removed += before - len(obj.material_slots)
-    msg = f"Removed {removed} unused slots"
-    if skipped:
-        msg += ". Skipped (not in the view layer): " + ", ".join(skipped)
-    return msg
+    return f"Removed {removed} unused slots"
 
 
 # ---------- textured materials ----------
@@ -401,13 +437,14 @@ def detect_too_many_materials(max_materials: int = 1) -> list:
 # ---------- unused materials ----------
 
 def _unused_materials() -> list:
-    """Local mesh materials nothing uses (a fake user doesn't count).
+    """Local mesh materials nothing uses.
 
-    Grease Pencil materials are skipped: they're never part of a mesh delivery, and
-    Blender's default file ships one with no users.
+    Materials with a fake user (the shield icon) were kept on purpose, so they count
+    as used, as in Blender's Purge. Grease Pencil materials are skipped: they're
+    never part of a mesh delivery, and Blender's default file ships one with no users.
     """
     return [m for m in bpy.data.materials
-            if m.library is None and not m.is_grease_pencil and m.users - int(m.use_fake_user) == 0]
+            if m.library is None and not m.is_grease_pencil and m.users == 0]
 
 
 @AgentTools.register_check(
@@ -419,7 +456,7 @@ def _unused_materials() -> list:
 )
 def detect_unused_materials() -> list:
     """Finds materials in the file that no object uses. Checks the whole file, not just
-    the selection, and ignores Grease Pencil materials."""
+    the selection, and ignores Grease Pencil materials and ones with a fake user."""
     names = sorted(m.name for m in _unused_materials())
     if not names:
         return []
@@ -428,15 +465,13 @@ def detect_unused_materials() -> list:
                   value=f"{len(names)} materials", target="0")]
 
 
-@AgentTools.register_fix(
-    "detect_unused_materials", display_name="Remove Unused Materials",
-    confirm=(
-        "Deletes every material in the file that nothing uses, including ones kept on purpose "
-        "with a fake user (the shield icon)."
-    ),
-)
+@AgentTools.register_fix("detect_unused_materials", display_name="Remove Unused Materials", safe=True)
 def remove_unused_materials(issues) -> str:
-    """Deletes every material in the file that nothing uses, including ones with a fake user."""
+    """Deletes every material in the file that nothing uses, as Purge does.
+
+    These have no users, so Blender would drop them when saving anyway. Materials
+    with a fake user are kept.
+    """
     unused = _unused_materials()
     for mat in unused:
         bpy.data.materials.remove(mat)

@@ -103,7 +103,7 @@
   },
   {
     "name": "detect_flipped_normals",
-    "description": "Finds faces whose normals point into the mesh instead of out of it.\n\nOnly closed parts of a mesh are checked: on an open surface, such as a plane,\nneither side is \"outside\".",
+    "description": "Finds faces whose normals point into the mesh instead of out of it.\n\nOnly closed parts of a mesh are checked: on an open surface, such as a plane,\nneither side is \"outside\". Pieces that mostly face inwards are reported apart,\nas inside out: they may be rooms or sky domes.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -112,7 +112,7 @@
   },
   {
     "name": "flip_normals_outward",
-    "description": "Flips the faces that point inwards, so every face points out of the mesh.",
+    "description": "Flips faces that point the other way from the rest of their piece.\n\nPieces that mostly face inwards are left: they may be meant to be seen from\ninside, like a room or a sky dome.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -130,7 +130,7 @@
   },
   {
     "name": "remove_color_attributes",
-    "description": "Removes every vertex colour attribute from the flagged meshes.",
+    "description": "Removes the vertex colour attributes no material on the mesh reads.\n\nColours a material uses (Color Attribute or Attribute node, also inside node\ngroups) are kept: removing them would change how the asset looks.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -211,7 +211,7 @@
   },
   {
     "name": "apply_transforms",
-    "description": "Applies scale (and rotation) on meshes with unapplied transforms.\n\nWith check_location, also moves each mesh to the world origin. The mesh moves\nwith its pivot, so the pivot stays where it is on the mesh.\nSkips mirrored meshes and meshes that share data with other objects.",
+    "description": "Applies scale (and rotation) on meshes with unapplied transforms, like Ctrl+A.\n\nWith check_location, also moves the asset to the world origin: its top-level\nobject moves, so its parts and its collision meshes move with it and keep\ntheir places. Leaves objects whose look would change (modifiers that depend on\nscale, custom normals with a non-uniform scale, negative scale, skinned or\nanimated meshes, shared mesh data).",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -274,7 +274,7 @@
   },
   {
     "name": "set_unit_scale",
-    "description": "Sets the scene's unit scale, and the length and rotation units if given.",
+    "description": "Sets the scene's unit scale, and the length and rotation units if given.\n\nWhen the unit scale changes, every top-level object is scaled about the world\norigin by old / new scale, so real-world (and FBX export) sizes stay the same.\nChildren follow their parents. Object scale is changed, not mesh data, so\nmodifiers such as Bevel keep their look.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -306,7 +306,7 @@
   },
   {
     "name": "remove_extra_uv_maps",
-    "description": "Removes every UV map after the first max_uv_maps on each flagged mesh.\n\nSkips a mesh whose render UV map (the one textures use) would be removed.",
+    "description": "Removes UV maps after the first max_uv_maps on each flagged mesh.\n\nKeeps the render UV map (the one textures use) and any map a material reads by\nname (UV Map, Normal Map, Tangent or Attribute node), so nothing changes look.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -361,7 +361,7 @@
   },
   {
     "name": "detect_color_space_issues",
-    "description": "Finds data maps (normal, roughness, metallic) set to sRGB, and colour maps set to Non-Color.",
+    "description": "Finds data maps (normal, roughness, metallic) set to sRGB, and colour maps set to Non-Color.\n\nFloat images (EXR, HDR) are skipped: they're linear on purpose.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -370,7 +370,7 @@
   },
   {
     "name": "fix_color_spaces",
-    "description": "Sets each flagged image to the colour space its role needs.",
+    "description": "Sets each flagged image to the colour space its role needs.\n\nThe role comes from the socket the image is plugged into directly: Base Color\nmeans sRGB; Normal Map, Bump, Roughness and Metallic mean Non-Color.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -423,7 +423,7 @@
   },
   {
     "name": "remove_unused_material_slots",
-    "description": "Removes slots no face uses. Empty slots that faces use need a material assigned by hand.",
+    "description": "Removes slots no face uses, with Blender's Remove Unused Slots.\n\nObjects with modifiers that may add faces with other materials (Solidify,\nBevel, Boolean, Geometry Nodes\u2026) are left: Blender's operator only looks at\nthe mesh's own faces, so it would remove slots those modifiers use.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -455,7 +455,7 @@
   },
   {
     "name": "detect_unused_materials",
-    "description": "Finds materials in the file that no object uses. Checks the whole file, not just\nthe selection, and ignores Grease Pencil materials.",
+    "description": "Finds materials in the file that no object uses. Checks the whole file, not just\nthe selection, and ignores Grease Pencil materials and ones with a fake user.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -464,7 +464,7 @@
   },
   {
     "name": "remove_unused_materials",
-    "description": "Deletes every material in the file that nothing uses, including ones with a fake user.",
+    "description": "Deletes every material in the file that nothing uses, as Purge does.\n\nThese have no users, so Blender would drop them when saving anyway. Materials\nwith a fake user are kept.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -496,7 +496,7 @@
   },
   {
     "name": "fix_invalid_names",
-    "description": "Replaces invalid characters in flagged object and material names with underscores.",
+    "description": "Replaces invalid characters in flagged object and material names with underscores.\n\nCollision meshes are renamed with their mesh (UCX_<new name>_NN), even if they\naren't part of the check, so the link between them never breaks.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
