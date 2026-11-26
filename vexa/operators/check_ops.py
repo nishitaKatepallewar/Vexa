@@ -12,7 +12,7 @@ from ..core.prefs import get_prefs
 from ..core.presets import get_preset, load_presets
 from ..core.registry import CHECK, AgentTools
 from ..core.results import plural
-from ..core.scope import build_scope
+from ..core.scope import build_scope, excluded_collections, is_exported
 from ..core.selection import select_result
 from .feedback import redraw_3d_views
 
@@ -25,11 +25,16 @@ STATE = {"preset_id": "", "scope": "", "results": [], "warning": None}
 # ---------- helpers ----------
 
 def scope_objects(context, scope: str) -> list:
-    """Every object in scope. Checks look at meshes; a few also look at other objects."""
-    if scope == "COLLECTION":
-        return list(context.view_layer.active_layer_collection.collection.all_objects)
-    if scope == "SCENE":
-        return list(context.scene.objects)
+    """Every object in scope. Checks look at meshes; a few also look at other objects.
+
+    Objects in collections switched off in the view layer are left out: exporters
+    skip them too.
+    """
+    if scope in {"COLLECTION", "SCENE"}:
+        objects = (context.view_layer.active_layer_collection.collection.all_objects if scope == "COLLECTION"
+                   else context.scene.objects)
+        excluded = excluded_collections(context.view_layer)
+        return [o for o in objects if is_exported(o, excluded)]
     selected = getattr(context, "selected_objects", None)  # missing in timers
     if selected is None:
         selected = [o for o in context.view_layer.objects if o.select_get()]

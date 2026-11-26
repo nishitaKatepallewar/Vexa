@@ -39,8 +39,10 @@ def register_props():
         name="Check",
         items=[
             ("SELECTED", "Selected", "Check the selected meshes"),
-            ("COLLECTION", "Collection", "Check every mesh in the active collection"),
-            ("SCENE", "Scene", "Check every mesh in the scene"),
+            ("COLLECTION", "Collection", "Check every mesh in the active collection, except in collections "
+                                        "switched off in the Outliner"),
+            ("SCENE", "Scene", "Check every mesh in the scene, except in collections switched off in the "
+                              "Outliner (exporters skip those too)"),
         ],
         default="SELECTED",
     )
