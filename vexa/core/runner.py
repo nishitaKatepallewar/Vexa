@@ -81,9 +81,19 @@ def apply_fix(result: CheckResult, overrides: Optional[Dict], scope: scope_mod.C
     kwargs = {k: v for k, v in settings.items() if k in accepted}
     with scope_mod.using(scope):
         message = fix.func(issues, **kwargs)
-    left = sorted({f"{i.object_name or 'scene'} ({i.no_fix})" for i in result.issues if i.no_fix})
+    left: Dict[str, List[str]] = {}
+    for issue in result.issues:
+        if issue.no_fix:
+            names = left.setdefault(issue.no_fix, [])
+            name = issue.object_name or "scene"
+            if name not in names:
+                names.append(name)
     if left:
-        message += ". Left for you: " + "; ".join(left[:5]) + ("…" if len(left) > 5 else "")
+        parts = []
+        for reason, names in left.items():
+            more = f" and {len(names) - 3} more" if len(names) > 3 else ""
+            parts.append(f"{', '.join(names[:3])}{more} ({reason})")
+        message += ". Left for you: " + "; ".join(parts)
     return message
 
 

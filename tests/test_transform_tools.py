@@ -50,8 +50,74 @@ def negative_scale_not_auto_fixed():
     _, r = run("detect_negative_scale")
     assert r.status == "ERROR" and not r.fixable
     _, t = run("detect_unapplied_transforms")
-    msg = runner.apply_fix(t, {}, build_scope([c]))
-    assert "Skipped" in msg and "negative" in msg, msg
+    assert not t.fixable and "negative" in t.issues[0].no_fix, t.issues
+    assert runner.apply_fix(t, {}, build_scope([c])) == "Nothing to fix"
+
+
+def _world_verts(obj):
+    bpy.context.view_layer.update()
+    ev = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    return sorted(tuple(round(c, 4) for c in obj.matrix_world @ v.co) for v in ev.data.vertices)
+
+
+@test
+def apply_transforms_moves_an_assembly_as_one_piece():
+    """Audit: with 'at the world origin', every part moved to 0,0,0 (1.95 m apart -> 0)."""
+    fresh()
+    body = cube("SM_Cart", loc=(5, 2, 0))
+    body.scale = (2, 1, 1)
+    wheel = cube("SM_Wheel", size=0.5, loc=(6.95, 2, -0.5))
+    wheel.parent = body
+    wheel.matrix_parent_inverse = body.matrix_world.inverted()
+    cube("UCX_SM_Cart_01", loc=(5, 2, 0)).scale = (2, 1, 1)
+    gap = (wheel.matrix_world.translation - body.matrix_world.translation).length
+    msg, r = fix("detect_unapplied_transforms", check_location=True)
+    bpy.context.view_layer.update()
+    assert body.location.length < 1e-6 and abs(body.dimensions.x - 4) < 1e-5, (msg, body.location)
+    assert abs((wheel.matrix_world.translation - body.matrix_world.translation).length - gap) < 1e-5, msg
+    ucx = bpy.data.objects["UCX_SM_Cart_01"]
+    assert ucx.location.length < 1e-6 and abs(ucx.dimensions.x - 4) < 1e-5, msg  # moved and applied too
+    assert "moved SM_Cart to the origin with 1 collision meshes" in msg, msg
+
+
+@test
+def apply_transforms_never_moves_separate_assets_onto_each_other():
+    fresh()
+    cube("SM_Crate", loc=(3, 0, 0))
+    cube("SM_Barrel", loc=(-3, 0, 0))
+    _, r = run("detect_unapplied_transforms", check_location=True)
+    assert not r.fixable and all("several separate assets" in i.no_fix for i in r.issues), r.issues
+    assert bpy.data.objects["SM_Crate"].location.x == 3
+
+
+@test
+def apply_transforms_leaves_objects_whose_look_would_change():
+    """Audit: applying scale under a Bevel changed the bevel (4.80 -> 5.60)."""
+    fresh()
+    bevel = cube("SM_Bevel")
+    bevel.scale = (2, 2, 2)
+    bevel.modifiers.new("Bevel", "BEVEL").width = 0.2
+    normals = cube("SM_Normals", loc=(5, 0, 0))
+    normals.scale = (1, 1, 3)
+    if hasattr(normals.data, "use_auto_smooth"):  # Blender 4.0
+        normals.data.use_auto_smooth = True
+    normals.data.normals_split_custom_set([(0.6, 0, 0.8)] * len(normals.data.loops))
+    animated = cube("SM_Animated", loc=(10, 0, 0))
+    animated.scale = (2, 2, 2)
+    animated.keyframe_insert("scale", frame=1)
+    smooth = cube("SM_Smooth", loc=(15, 0, 0))
+    smooth.scale = (2, 2, 2)
+    smooth.modifiers.new("Subdivision", "SUBSURF")
+    before = {o.name: _world_verts(o) for o in bpy.context.scene.objects}
+    _, r = run("detect_unapplied_transforms")
+    reasons = {i.object_name: i.no_fix for i in r.issues}
+    assert "Bevel" in reasons["SM_Bevel"] and "custom normals" in reasons["SM_Normals"], reasons
+    assert "animated" in reasons["SM_Animated"] and reasons["SM_Smooth"] == "", reasons
+    msg, r = fix("detect_unapplied_transforms")
+    assert msg.startswith("Applied transforms on 1 objects. Left for you:"), msg
+    assert smooth.scale.x == 1 and _world_verts(smooth) == before["SM_Smooth"]  # same shape, applied
+    for name in ("SM_Bevel", "SM_Normals", "SM_Animated"):
+        assert _world_verts(bpy.data.objects[name]) == before[name], name
 
 
 @test

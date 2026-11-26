@@ -211,7 +211,7 @@
   },
   {
     "name": "apply_transforms",
-    "description": "Applies scale (and rotation) on meshes with unapplied transforms.\n\nWith check_location, also moves each mesh to the world origin. The mesh moves\nwith its pivot, so the pivot stays where it is on the mesh.\nSkips mirrored meshes and meshes that share data with other objects.",
+    "description": "Applies scale (and rotation) on meshes with unapplied transforms, like Ctrl+A.\n\nWith check_location, also moves the asset to the world origin: its top-level\nobject moves, so its parts and its collision meshes move with it and keep\ntheir places. Leaves objects whose look would change (modifiers that depend on\nscale, custom normals with a non-uniform scale, negative scale, skinned or\nanimated meshes, shared mesh data).",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

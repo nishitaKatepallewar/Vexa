@@ -7,9 +7,10 @@ from mathutils import Matrix, Vector
 
 from ..core.registry import AgentTools
 from ..core.results import Issue
-from ..core.scope import current
+from ..core.scope import collision_base, current
 
 TOL = 1e-4
+NOT_AT_ORIGIN = "Not at world origin"
 
 
 def _fmt_vec(v) -> str:
@@ -37,8 +38,22 @@ def _describe_unapplied(labels: list) -> str:
     if applied:
         parts.append("Unapplied " + " and ".join(applied))
     if "location" in labels:
-        parts.append("not at world origin" if parts else "Not at world origin")
+        parts.append("not at world origin" if parts else NOT_AT_ORIGIN)
     return "; ".join(parts)
+
+
+def _transform_animated(obj) -> bool:
+    action = obj.animation_data.action if obj.animation_data else None
+    if action is None:
+        return False
+    fcurves = getattr(action, "fcurves", None)
+    if fcurves is None:  # Blender 5 layered actions: read the channels the object uses
+        try:
+            fcurves = [fc for layer in action.layers for strip in layer.strips
+                       for bag in strip.channelbags for fc in bag.fcurves]
+        except AttributeError:
+            return True  # can't tell: assume it is
+    return any(fc.data_path in {"location", "rotation_euler", "rotation_quaternion", "scale"} for fc in fcurves)
 
 
 # ---------- transforms applied ----------
@@ -66,33 +81,98 @@ def detect_unapplied_transforms(check_rotation: bool = True, check_location: boo
     return issues
 
 
+# Modifiers whose result doesn't depend on the object's own rotation or scale, so
+# applying the transform can't change how the mesh looks. Subdivision is affine
+# invariant; the others only use angles and face sizes, which uniform scale keeps.
+_ALWAYS_SAFE_MODIFIERS = {"SUBSURF"}
+_UNIFORM_SAFE_MODIFIERS = {"TRIANGULATE", "WEIGHTED_NORMAL", "EDGE_SPLIT"}
+
+
+def _is_uniform(scale) -> bool:
+    return max(abs(s) for s in scale) - min(abs(s) for s in scale) <= TOL
+
+
+def _root(obj):
+    while obj.parent:
+        obj = obj.parent
+    return obj
+
+
+def _render_roots(scope) -> list:
+    """The top-level objects the render meshes in scope belong to, one per assembly."""
+    roots = []
+    for obj in scope.meshes:
+        root = _root(obj)
+        if root not in roots:
+            roots.append(root)
+    return roots
+
+
+def _move_skip_reason(obj, scope) -> str:
+    """Why Apply Transforms mustn't move this object to the origin, or "".
+
+    Only a single asset is moved, by its top-level object, so its parts and its
+    collision keep their places. Moving each part on its own collapses assemblies.
+    """
+    if obj.parent:
+        return f"part of {_root(obj).name}, so it moves with it"
+    roots = _render_roots(scope)
+    if len(roots) != 1:
+        return "several separate assets: move them to the origin together by hand"
+    if obj is roots[0]:
+        return ""
+    if collision_base(obj.name) in {roots[0].name} | {o.name for o in roots[0].children_recursive}:
+        return f"collision mesh: moves with {roots[0].name}"
+    return "not part of the asset being checked"
+
+
+def _apply_skip_reason(issue) -> str:
+    """Why Apply Transforms must leave this object alone, or ""."""
+    scope = current()
+    obj = scope.scene.objects.get(issue.object_name)
+    if obj is None:
+        return "not in the scene"
+    if obj.library or obj.data.library:
+        return "linked from another file"
+    if issue.message == NOT_AT_ORIGIN:
+        return _move_skip_reason(obj, scope)
+    if any(s < 0 for s in obj.scale):
+        return "negative scale: see Negative Scale"
+    if obj.data.users > 1:
+        return "shares its mesh with other objects"
+    if _transform_animated(obj):
+        return "animated transforms"
+    if any(m.type == "ARMATURE" for m in obj.modifiers) or (obj.parent and obj.parent.type == "ARMATURE"):
+        return "skinned: apply transforms on the rig and mesh together"
+    uniform = _is_uniform(obj.scale)
+    changing = [m.name for m in obj.modifiers if (m.show_viewport or m.show_render)
+                and m.type not in _ALWAYS_SAFE_MODIFIERS
+                and not (uniform and m.type in _UNIFORM_SAFE_MODIFIERS)]
+    if changing:
+        return f"modifiers would change shape ({', '.join(changing[:3])}): apply them first"
+    if obj.data.has_custom_normals and not uniform:
+        return "custom normals would change with a non-uniform scale"
+    return ""
+
+
 @AgentTools.register_fix(
-    "detect_unapplied_transforms", display_name="Apply Transforms",
-    confirm=(
-        "Applies scale and rotation so they become 1 and 0 without moving the mesh. Modifiers "
-        "such as Bevel or Solidify can look different afterwards. With 'at the world origin' "
-        "on, each object also moves to the origin, so the parts of an assembly end up on top "
-        "of each other."
-    ),
+    "detect_unapplied_transforms", display_name="Apply Transforms", safe=True,
+    skip_reason=_apply_skip_reason,
 )
 def apply_transforms(issues, check_rotation: bool = True, check_location: bool = False) -> str:
-    """Applies scale (and rotation) on meshes with unapplied transforms.
+    """Applies scale (and rotation) on meshes with unapplied transforms, like Ctrl+A.
 
-    With check_location, also moves each mesh to the world origin. The mesh moves
-    with its pivot, so the pivot stays where it is on the mesh.
-    Skips mirrored meshes and meshes that share data with other objects.
+    With check_location, also moves the asset to the world origin: its top-level
+    object moves, so its parts and its collision meshes move with it and keep
+    their places. Leaves objects whose look would change (modifiers that depend on
+    scale, custom normals with a non-uniform scale, negative scale, skinned or
+    animated meshes, shared mesh data).
     """
-    scene = current().scene
-    targets, skipped = [], []
+    scope = current()
+    targets, moved = [], ""
     for issue in issues:
-        obj = scene.objects.get(issue.object_name)
-        if not obj:
-            continue
-        if any(s < 0 for s in obj.scale):
-            skipped.append(f"{obj.name} (negative scale)")
-        elif obj.data.users > 1:
-            skipped.append(f"{obj.name} (shared mesh data)")
-        else:
+        obj = scope.scene.objects.get(issue.object_name)
+        if obj and [label for label, _ in _unapplied(obj, check_rotation, False)]:
             targets.append(obj)
     if targets:
         with bpy.context.temp_override(
@@ -102,13 +182,23 @@ def apply_transforms(issues, check_rotation: bool = True, check_location: bool =
             if not bpy.ops.object.transform_apply.poll():
                 return "Couldn't apply transforms here. Switch to Object Mode and try again."
             bpy.ops.object.transform_apply(location=False, rotation=check_rotation, scale=True)
-        if check_location:
-            for obj in targets:
-                obj.location = (0.0, 0.0, 0.0)
-    msg = f"Applied transforms on {len(targets)} objects"
-    if skipped:
-        msg += ". Skipped: " + ", ".join(skipped)
-    return msg
+    if check_location:
+        roots = _render_roots(scope)
+        root = roots[0] if len(roots) == 1 else None
+        if root and root.name in {i.object_name for i in issues} and root.location.length > TOL:
+            offset = root.matrix_world.translation.copy()
+            names = {o.name for o in root.children_recursive} | {root.name}
+            collision = [c for c in scope.scene.objects if c.parent is None and c is not root
+                         and collision_base(c.name) in names]
+            for obj in [root] + collision:
+                matrix = obj.matrix_world.copy()
+                matrix.translation -= offset
+                obj.matrix_world = matrix
+            moved = f", moved {root.name} to the origin" + (
+                f" with {len(collision)} collision meshes" if collision else "")
+        elif len(roots) > 1 and any(o.location.length > TOL for o in roots):
+            moved = ". Not moved to the origin: several separate assets"
+    return f"Applied transforms on {len(targets)} objects{moved}"
 
 
 # ---------- negative scale ----------
@@ -247,20 +337,6 @@ def detect_wrong_unit_scale(scale_length: float = 1.0, length_unit: str = "", ro
         issues.append(Issue(None, "Scene rotation unit doesn't match",
                             value=units.system_rotation.lower(), target=rotation_unit.lower()))
     return issues
-
-
-def _transform_animated(obj) -> bool:
-    action = obj.animation_data.action if obj.animation_data else None
-    if action is None:
-        return False
-    fcurves = getattr(action, "fcurves", None)
-    if fcurves is None:  # Blender 5 layered actions: read the channels the object uses
-        try:
-            fcurves = [fc for layer in action.layers for strip in layer.strips
-                       for bag in strip.channelbags for fc in bag.fcurves]
-        except AttributeError:
-            return True  # can't tell: assume it is
-    return any(fc.data_path in {"location", "rotation_euler", "rotation_quaternion", "scale"} for fc in fcurves)
 
 
 def _unit_skip_reason(issue) -> str:
