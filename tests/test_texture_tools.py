@@ -129,8 +129,24 @@ def unused_slots_skipped_on_objects_outside_the_view_layer():
     c.data.materials.append(None)
     bpy.context.view_layer.layer_collection.children["Excluded"].exclude = True
     msg, r = fix("detect_unused_material_slots")
-    assert msg == "Removed 0 unused slots. Skipped (not in the view layer): SM_Crate", msg
+    assert msg == "Nothing to fix" and r.issues[0].no_fix == "not in the view layer", (msg, r.issues)
     assert len(c.material_slots) == 2
+
+
+@test
+def slots_a_modifier_uses_are_kept():
+    """Blender's Remove Unused Slots deletes a slot only a Solidify rim uses (4.2 and 5.2)."""
+    fresh()
+    bpy.ops.mesh.primitive_plane_add()
+    plane = bpy.context.active_object
+    for name in ("M_Face", "M_Rim"):
+        plane.data.materials.append(bpy.data.materials.new(name))
+    solidify = plane.modifiers.new("Solidify", "SOLIDIFY")
+    solidify.use_rim, solidify.material_offset_rim = True, 1
+    _, r = run("detect_unused_material_slots")
+    assert not r.fixable and "Solidify" in r.issues[0].no_fix, r.issues
+    fix("detect_unused_material_slots")
+    assert [s.material.name for s in plane.material_slots] == ["M_Face", "M_Rim"]
 
 
 

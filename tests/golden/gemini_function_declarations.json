@@ -423,7 +423,7 @@
   },
   {
     "name": "remove_unused_material_slots",
-    "description": "Removes slots no face uses. Empty slots that faces use need a material assigned by hand.",
+    "description": "Removes slots no face uses, with Blender's Remove Unused Slots.\n\nObjects with modifiers that may add faces with other materials (Solidify,\nBevel, Boolean, Geometry Nodes\u2026) are left: Blender's operator only looks at\nthe mesh's own faces, so it would remove slots those modifiers use.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

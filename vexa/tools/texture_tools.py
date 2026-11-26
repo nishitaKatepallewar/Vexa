@@ -330,24 +330,47 @@ def _selected_alone(obj):
         view_layer.objects.active = was_active
 
 
+# Modifiers that never add faces with other materials. Any other modifier may, e.g.
+# Solidify's rim and shell offsets, Bevel's material, Boolean, Array caps, Geometry
+# Nodes, so a slot no face of the mesh uses can still be used in the export.
+_MATERIAL_NEUTRAL_MODIFIERS = {
+    "ARMATURE", "SUBSURF", "MULTIRES", "TRIANGULATE", "MIRROR", "WEIGHTED_NORMAL", "EDGE_SPLIT",
+    "DECIMATE", "SMOOTH", "LAPLACIANSMOOTH", "CORRECTIVE_SMOOTH", "DISPLACE", "SHRINKWRAP", "CAST",
+    "SIMPLE_DEFORM", "LATTICE", "CURVE", "HOOK", "WARP", "WAVE", "MESH_DEFORM", "SURFACE_DEFORM",
+    "UV_PROJECT", "UV_WARP", "NORMAL_EDIT", "WELD",
+}
+
+
+def _slots_skip_reason(issue) -> str:
+    obj = current().scene.objects.get(issue.object_name)
+    if obj is None:
+        return "not in the scene"
+    if obj.name not in bpy.context.view_layer.objects:
+        return "not in the view layer"
+    if "unused" not in issue.message:
+        return "empty slots used by faces need a material assigned by hand"
+    others = [m.name for m in obj.modifiers if m.type not in _MATERIAL_NEUTRAL_MODIFIERS]
+    if others:
+        return f"modifiers may use the slots ({', '.join(others[:3])})"
+    return ""
+
+
 @AgentTools.register_fix(
-    "detect_unused_material_slots", display_name="Remove Unused Material Slots",
-    confirm=(
-        "Removes material slots no face uses, with Blender's Remove Unused Slots. That also "
-        "removes slots only a modifier uses, such as a Solidify rim material."
-    ),
+    "detect_unused_material_slots", display_name="Remove Unused Material Slots", safe=True,
+    skip_reason=_slots_skip_reason,
 )
 def remove_unused_material_slots(issues) -> str:
-    """Removes slots no face uses. Empty slots that faces use need a material assigned by hand."""
+    """Removes slots no face uses, with Blender's Remove Unused Slots.
+
+    Objects with modifiers that may add faces with other materials (Solidify,
+    Bevel, Boolean, Geometry Nodes…) are left: Blender's operator only looks at
+    the mesh's own faces, so it would remove slots those modifiers use.
+    """
     scene = current().scene
-    view_layer_objects = bpy.context.view_layer.objects
-    removed, skipped = 0, []
+    removed = 0
     for issue in issues:
         obj = scene.objects.get(issue.object_name)
         if not obj:
-            continue
-        if obj.name not in view_layer_objects:  # e.g. in an excluded collection: can't be selected
-            skipped.append(obj.name)
             continue
         before = len(obj.material_slots)
         with _selected_alone(obj), bpy.context.temp_override(object=obj, active_object=obj):
@@ -355,10 +378,7 @@ def remove_unused_material_slots(issues) -> str:
                 continue
             bpy.ops.object.material_slot_remove_unused()
         removed += before - len(obj.material_slots)
-    msg = f"Removed {removed} unused slots"
-    if skipped:
-        msg += ". Skipped (not in the view layer): " + ", ".join(skipped)
-    return msg
+    return f"Removed {removed} unused slots"
 
 
 # ---------- textured materials ----------
