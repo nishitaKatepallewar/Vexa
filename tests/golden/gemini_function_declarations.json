@@ -306,7 +306,7 @@
   },
   {
     "name": "remove_extra_uv_maps",
-    "description": "Removes every UV map after the first max_uv_maps on each flagged mesh.\n\nSkips a mesh whose render UV map (the one textures use) would be removed.",
+    "description": "Removes UV maps after the first max_uv_maps on each flagged mesh.\n\nKeeps the render UV map (the one textures use) and any map a material reads by\nname (UV Map, Normal Map, Tangent or Attribute node), so nothing changes look.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

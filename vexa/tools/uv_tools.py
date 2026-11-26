@@ -3,6 +3,7 @@
 import numpy as np
 from mathutils.bvhtree import BVHTree
 
+from ..core.nodes import material_nodes
 from ..core.registry import AgentTools
 from ..core.results import Issue, plural
 from ..core.scope import current
@@ -46,35 +47,68 @@ def detect_extra_uv_maps(max_uv_maps: int = 1) -> list:
     return issues
 
 
+def _protected_uv_maps(obj) -> dict:
+    """UV maps that must stay, as {name: why}: the render map and maps a material reads."""
+    layers = obj.data.uv_layers
+    kept = {layer.name: "textures use it" for layer in layers if layer.active_render}
+    for slot in obj.material_slots:
+        if slot.material is None:
+            continue
+        for node in material_nodes(slot.material):
+            name = ""
+            if node.type in {"UVMAP", "NORMAL_MAP", "TANGENT"}:
+                name = getattr(node, "uv_map", "")
+            elif node.type == "ATTRIBUTE" and node.attribute_type == "GEOMETRY":
+                name = node.attribute_name
+            if name in layers:
+                kept.setdefault(name, f"used by {slot.material.name}")
+    return kept
+
+
+def _removable_uv_maps(obj, max_uv_maps: int) -> list:
+    kept = _protected_uv_maps(obj)
+    return [layer.name for layer in obj.data.uv_layers[max_uv_maps:] if layer.name not in kept]
+
+
+def _uv_maps_skip_reason(issue, max_uv_maps: int = 1) -> str:
+    obj = current().scene.objects.get(issue.object_name)
+    if obj is None:
+        return "not in the scene"
+    if any(m.type == "NODES" for m in obj.modifiers):
+        return "geometry nodes may read them"
+    if not _removable_uv_maps(obj, max_uv_maps):
+        protected = _protected_uv_maps(obj)
+        return "; ".join(f"{layer.name}: {protected[layer.name]}" for layer in obj.data.uv_layers[max_uv_maps:])
+    return ""
+
+
 @AgentTools.register_fix(
-    "detect_extra_uv_maps", display_name="Remove Extra UV Maps",
-    confirm=(
-        "Removes every UV map after the allowed number. A material that reads one of those "
-        "maps by name (UV Map node) loses it."
-    ),
+    "detect_extra_uv_maps", display_name="Remove Extra UV Maps", safe=True,
+    skip_reason=_uv_maps_skip_reason,
 )
 def remove_extra_uv_maps(issues, max_uv_maps: int = 1) -> str:
-    """Removes every UV map after the first max_uv_maps on each flagged mesh.
+    """Removes UV maps after the first max_uv_maps on each flagged mesh.
 
-    Skips a mesh whose render UV map (the one textures use) would be removed.
+    Keeps the render UV map (the one textures use) and any map a material reads by
+    name (UV Map, Normal Map, Tangent or Attribute node), so nothing changes look.
     """
     scene = current().scene
-    removed, skipped = 0, []
+    removed, kept = 0, []
     for issue in issues:
         obj = scene.objects.get(issue.object_name)
         if not obj:
             continue
         layers = obj.data.uv_layers
-        extra = [layer.name for layer in layers[max_uv_maps:]]
-        if any(layers[name].active_render for name in extra):
-            skipped.append(obj.name)
-            continue
-        for name in extra:
+        removable = _removable_uv_maps(obj, max_uv_maps)
+        protected = _protected_uv_maps(obj)
+        kept += [f"{layer.name} ({protected[layer.name]})" for layer in layers[max_uv_maps:]
+                 if layer.name in protected]
+        for name in removable:
             layers.remove(layers[name])
-        removed += len(extra)
+        removed += len(removable)
     msg = f"Removed {removed} UV maps"
-    if skipped:
-        msg += ". Skipped (render UV map is an extra one): " + ", ".join(skipped)
+    if kept:
+        msg += ". Kept: " + ", ".join(kept)
     return msg
 
 

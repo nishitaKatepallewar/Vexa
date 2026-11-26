@@ -41,8 +41,11 @@ def run_check(check_name: str, overrides: Optional[Dict], scope: scope_mod.Check
         with scope_mod.using(scope):
             issues: List[Issue] = check.func(**settings) or []
             if fix and fix.fix.skip_reason:
+                reason = fix.fix.skip_reason
+                accepted = inspect.signature(reason).parameters
+                kwargs = {k: v for k, v in settings.items() if k in accepted}
                 for issue in issues:
-                    issue.no_fix = fix.fix.skip_reason(issue) or ""
+                    issue.no_fix = reason(issue, **kwargs) or ""
     except Exception as e:  # noqa: BLE001 - one broken check must never stop a run
         return CheckResult(check_name, problem_title(check.display_name), "ERROR", f"Check failed: {e}",
                            why=check.check.why)

@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import bpy  # noqa: E402
 from helpers import cube, fix, fresh, mesh_from, run, main, test  # noqa: E402
 
 
@@ -51,9 +52,28 @@ def extra_uv_maps_fix_keeps_the_render_uv_map():
     fresh()
     c = cube()
     c.data.uv_layers.new(name="Painted").active_render = True
-    msg, r = fix("detect_extra_uv_maps")
-    assert "Skipped" in msg and r.status == "WARNING", (msg, r.summary)
+    _, r = run("detect_extra_uv_maps")
+    assert not r.fixable and r.issues[0].no_fix == "Painted: textures use it", r.issues
+    fix("detect_extra_uv_maps")
     assert len(c.data.uv_layers) == 2
+
+
+@test
+def extra_uv_maps_a_material_reads_are_kept():
+    """A material can read a second UV map by name; removing it breaks the texture."""
+    fresh()
+    c = cube()
+    c.data.uv_layers.new(name="Detail")
+    c.data.uv_layers.new(name="Spare")
+    mat = bpy.data.materials.new("M_Detail")
+    if mat.node_tree is None:
+        mat.use_nodes = True
+    mat.node_tree.nodes.new("ShaderNodeUVMap").uv_map = "Detail"
+    c.data.materials.append(mat)
+    msg, r = fix("detect_extra_uv_maps")
+    assert msg == "Removed 1 UV maps. Kept: Detail (used by M_Detail)", msg
+    assert [layer.name for layer in c.data.uv_layers] == ["UVMap", "Detail"]
+    assert not r.fixable and r.issues[0].no_fix == "Detail: used by M_Detail", r.issues
 
 
 
