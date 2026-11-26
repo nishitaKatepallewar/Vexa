@@ -109,6 +109,43 @@ def color_space_leaves_float_and_dual_use_images():
 
 
 @test
+def missing_textures_relink_only_to_a_single_match():
+    import tempfile
+    from vexa.tools import texture_tools
+    fresh()
+    c = cube()
+    mat = bpy.data.materials.new("M_Crate")
+    if mat.node_tree is None:
+        mat.use_nodes = True
+    c.data.materials.append(mat)
+    images = {}
+    for name in ("T_Crate_D.png", "T_Crate_N.png"):
+        image = bpy.data.images.new(name, 4, 4)
+        image.source, image.filepath = "FILE", "C:\\Users\\artist\\old\\" + name  # moved from another PC
+        mat.node_tree.nodes.new("ShaderNodeTexImage").image = image
+        images[name] = image
+    _, r = run("detect_missing_textures")
+    assert not r.fixable and r.issues[0].no_fix.startswith("save the .blend first"), r.issues
+    with tempfile.TemporaryDirectory() as d:
+        for folder in ("textures", "textures/old", "backup"):
+            os.makedirs(os.path.join(d, folder))
+        pixels = bpy.data.images.new("px", 4, 4)
+        pixels.filepath_raw, pixels.file_format = os.path.join(d, "textures", "T_Crate_D.png"), "PNG"
+        pixels.save()
+        pixels.filepath_raw = os.path.join(d, "textures", "old", "T_Crate_N.png")
+        pixels.save()
+        pixels.filepath_raw = os.path.join(d, "backup", "T_Crate_N.png")  # a second T_Crate_N: ambiguous
+        pixels.save()
+        bpy.ops.wm.save_as_mainfile(filepath=os.path.join(d, "crate.blend"))
+        texture_tools._INDEX_CACHE.clear()
+        msg, r = fix("detect_missing_textures")
+        assert msg == "Relinked 1 images. Not found once in the project: T_Crate_N.png", msg
+        assert bpy.path.abspath(images["T_Crate_D.png"].filepath) == os.path.join(d, "textures", "T_Crate_D.png")
+        assert "artist/old" in images["T_Crate_N.png"].filepath, images["T_Crate_N.png"].filepath  # untouched
+        assert not r.fixable and "no single file" in r.issues[0].no_fix, r.issues
+
+
+@test
 def texture_sizes():
     _crate_with_textures()
     _, r = run("detect_invalid_texture_sizes")
@@ -141,7 +178,7 @@ def unused_slots_fixed_on_objects_that_arent_selected():
     other.select_set(True)
     bpy.context.view_layer.objects.active = other
     msg, r = fix("detect_unused_material_slots")
-    assert msg == "Removed 2 unused slots" and r.status == "PASS", (msg, r.summary)
+    assert msg.startswith("Removed 2 unused slots") and r.status == "PASS", (msg, r.summary)
     assert [s.material.name for s in c.material_slots] == ["M_A"]
     # The artist's selection is left as it was.
     assert [o.name for o in bpy.context.selected_objects] == ["SM_Other"]
@@ -162,6 +199,24 @@ def unused_slots_skipped_on_objects_outside_the_view_layer():
     msg, r = fix("detect_unused_material_slots")
     assert msg == "Nothing to fix" and r.issues[0].no_fix == "not in the view layer", (msg, r.issues)
     assert len(c.material_slots) == 2
+
+
+@test
+def removing_slots_leaves_no_orphan_materials():
+    """Removing a material's last slot left it unused, so Unused Materials got worse."""
+    fresh()
+    c = cube()
+    c.data.materials.append(bpy.data.materials.new("M_Used"))
+    c.data.materials.append(bpy.data.materials.new("M_Spare"))
+    other = cube("SM_Other", loc=(5, 0, 0))
+    shared = bpy.data.materials.new("M_Shared")
+    c.data.materials.append(shared)
+    other.data.materials.append(shared)
+    bpy.data.materials["M_Spare"].use_fake_user = False
+    msg, r = fix("detect_unused_material_slots")
+    assert msg == "Removed 2 unused slots and 1 materials nothing uses now", msg
+    assert sorted(m.name for m in bpy.data.materials) == ["M_Shared", "M_Used"]
+    assert run("detect_unused_materials")[1].status == "PASS"
 
 
 @test

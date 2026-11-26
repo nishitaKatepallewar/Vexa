@@ -2,6 +2,7 @@
 and format, materials per mesh, material slots, unused materials."""
 
 import os
+import time
 from contextlib import contextmanager
 
 import bpy
@@ -75,6 +76,99 @@ def detect_missing_textures() -> list:
             issues.append(Issue(obj.name, "Missing: " + ", ".join(missing[:3]) + more,
                                 value=f"{len(missing)} missing"))
     return issues
+
+
+# Most files looked at when searching the project folder for a missing texture.
+_SEARCH_LIMIT = 50_000
+
+
+_INDEX_CACHE = {}  # root -> (time, index): one walk serves a whole check run
+
+
+def _project_files(root: str) -> dict:
+    """{file name: [paths]} under root, skipping hidden folders. Stops at _SEARCH_LIMIT
+    files, and then says so with the key None. Reuses a walk up to 5 seconds old."""
+    cached = _INDEX_CACHE.get(root)
+    if cached and time.monotonic() - cached[0] < 5:
+        return cached[1]
+    index = _walk(root)
+    _INDEX_CACHE.clear()
+    _INDEX_CACHE[root] = (time.monotonic(), index)
+    return index
+
+
+def _walk(root: str) -> dict:
+    index, seen = {}, 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for name in filenames:
+            index.setdefault(name, []).append(os.path.join(dirpath, name))
+        seen += len(filenames)
+        if seen > _SEARCH_LIMIT:
+            index[None] = []
+            break
+    return index
+
+
+def _missing_files(obj) -> list:
+    """Images on the object's materials whose file isn't found: [(material, image)]."""
+    out = []
+    for mat in _materials(obj):
+        for node in _image_nodes(mat):
+            if node.image is not None and _missing_reason(node.image) == "file not found":
+                out.append((mat, node.image))
+    return out
+
+
+def _relink_target(image, index) -> str:
+    """The one file in the project with the image's file name, or ""."""
+    matches = index.get(os.path.basename(bpy.path.abspath(image.filepath).replace("\\", "/")), [])
+    return matches[0] if len(matches) == 1 else ""
+
+
+def _relink_skip_reason(issue) -> str:
+    if not bpy.data.filepath:
+        return "save the .blend first, so Vexa knows which folder to search"
+    obj = current().scene.objects.get(issue.object_name)
+    missing = _missing_files(obj) if obj else []
+    if not missing:
+        return "no image files to look for (empty nodes or unsaved images)"
+    index = _project_files(os.path.dirname(bpy.data.filepath))
+    if not any(_relink_target(image, index) for _, image in missing):
+        return "no single file with the same name in the .blend's folder"
+    return ""
+
+
+@AgentTools.register_fix(
+    "detect_missing_textures", display_name="Relink Missing Textures", safe=True,
+    skip_reason=_relink_skip_reason,
+)
+def relink_missing_textures(issues) -> str:
+    """Points each missing image at the file with the same name in the .blend's folder
+    or its subfolders, only when exactly one such file exists.
+
+    A stricter Find Missing Files: an image is never relinked to one of two files with
+    the same name. Images with no file (empty nodes, unsaved bakes) are left.
+    """
+    scene = current().scene
+    index = _project_files(os.path.dirname(bpy.data.filepath))
+    relinked, left = [], []
+    for issue in issues:
+        obj = scene.objects.get(issue.object_name)
+        for _, image in _missing_files(obj) if obj else []:
+            if image.name in relinked:
+                continue
+            target = _relink_target(image, index)
+            if not target:
+                left.append(image.name)
+                continue
+            image.filepath = bpy.path.relpath(target)
+            image.reload()
+            relinked.append(image.name)
+    msg = f"Relinked {len(relinked)} images"
+    if left:
+        msg += ". Not found once in the project: " + ", ".join(sorted(set(left)))
+    return msg
 
 
 # ---------- colour space ----------
@@ -385,21 +479,28 @@ def remove_unused_material_slots(issues) -> str:
 
     Objects with modifiers that may add faces with other materials (Solidify,
     Bevel, Boolean, Geometry Nodes…) are left: Blender's operator only looks at
-    the mesh's own faces, so it would remove slots those modifiers use.
+    the mesh's own faces, so it would remove slots those modifiers use. Materials
+    left with no users at all are removed too, as Blender would on save.
     """
     scene = current().scene
-    removed = 0
+    removed, materials = 0, set()
     for issue in issues:
         obj = scene.objects.get(issue.object_name)
         if not obj:
             continue
         before = len(obj.material_slots)
+        materials |= {slot.material for slot in obj.material_slots if slot.material}
         with _selected_alone(obj), bpy.context.temp_override(object=obj, active_object=obj):
             if not bpy.ops.object.material_slot_remove_unused.poll():
                 continue
             bpy.ops.object.material_slot_remove_unused()
         removed += before - len(obj.material_slots)
-    return f"Removed {removed} unused slots"
+    # Materials only those slots used now have no users: Blender drops them on save.
+    orphans = [m for m in materials if m.users == 0 and m.library is None]
+    for mat in orphans:
+        bpy.data.materials.remove(mat)
+    return f"Removed {removed} unused slots" + (
+        f" and {len(orphans)} materials nothing uses now" if orphans else "")
 
 
 # ---------- textured materials ----------

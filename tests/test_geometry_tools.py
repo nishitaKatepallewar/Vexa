@@ -268,6 +268,18 @@ def nonplanar_ignores_slight_bends_by_default():
 
 
 @test
+def triangulating_never_makes_an_edge_shared_by_three_faces():
+    """Splitting a quad along a diagonal that's already an edge (as Ctrl+T does on
+    Suzanne) creates non-manifold geometry. Vexa uses the other diagonal there."""
+    fresh()
+    bpy.ops.mesh.primitive_monkey_add()
+    assert run("detect_open_edges")[1].issues[0].message == "42 open edges"
+    msg, r = fix("detect_untriangulated_meshes")
+    assert r.status == "PASS", (msg, r.issues)
+    assert run("detect_open_edges")[1].issues[0].message == "42 open edges"  # no non-manifold edge
+
+
+@test
 def intersecting_meshes_found():
     fresh()
     cube("SM_A")

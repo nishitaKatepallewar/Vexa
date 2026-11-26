@@ -7,6 +7,8 @@ and tests. Saving results to a file lives in core/report.py.
 import inspect
 from typing import Dict, Iterable, List, Optional, Set
 
+import numpy as np
+
 from . import scope as scope_mod
 from .presets import Preset
 from .registry import CHECK, AgentTools
@@ -58,7 +60,41 @@ def run_check(check_name: str, overrides: Optional[Dict], scope: scope_mod.Check
         fixable=fix is not None and any(not i.no_fix for i in issues),
         fix_safe=fix is not None and fix.fix.safe,
         issues=issues,
+        size=problem_size(issues, scope),
     )
+
+
+def _world_area(obj, indices) -> float:
+    """Area of some of a mesh's faces in world space, so applying scale doesn't change it."""
+    polygons = obj.data.polygons
+    area = np.zeros(len(polygons))
+    normal = np.zeros(len(polygons) * 3)
+    polygons.foreach_get("area", area)
+    polygons.foreach_get("normal", normal)
+    index = np.asarray(indices)
+    index = index[index < len(area)]
+    matrix = np.array(obj.matrix_world.to_3x3())
+    det = abs(np.linalg.det(matrix))
+    if det < 1e-12:
+        return float(area[index].sum())
+    stretch = np.linalg.norm(normal.reshape(-1, 3)[index] @ np.linalg.inv(matrix), axis=1)
+    return float((area[index] * det * stretch).sum())
+
+
+def problem_size(issues: List[Issue], scope: scope_mod.CheckScope) -> float:
+    """How much is wrong, comparable before and after a fix.
+
+    Flagged faces count by their area in world space, so splitting a face into
+    triangles or applying scale doesn't make a problem look bigger. Edges and vertices count one each; other issues one.
+    """
+    total = 0.0
+    for issue in issues:
+        obj = scope.scene.objects.get(issue.object_name) if issue.object_name else None
+        if issue.element == "FACE" and issue.indices and obj is not None and obj.type == "MESH":
+            total += _world_area(obj, issue.indices)
+        else:
+            total += max(1, len(issue.indices))
+    return total
 
 
 def run_preset(preset: Preset, objects: Iterable, scene=None,
@@ -100,16 +136,12 @@ def apply_fix(result: CheckResult, overrides: Optional[Dict], scope: scope_mod.C
     return message
 
 
-def _problem_size(result: CheckResult) -> int:
-    """How much is wrong: flagged faces, edges or vertices, or one per other issue."""
-    return sum(max(1, len(i.indices)) for i in result.issues)
-
-
 def new_problems(before: List[CheckResult], after: List[CheckResult]) -> List[str]:
     """Checks that got worse between two runs of the same target, e.g. around a fix.
 
     Worse means a worse status (a pass that now fails, a warning that's now an error)
-    or more flagged elements than before. Returns "Title (summary)" for each.
+    or a bigger problem_size: more flagged face area, edges, vertices or issues.
+    Returns "Title (summary)" for each.
     """
     old = {r.check_id: r for r in before}
     worse = []
@@ -117,7 +149,8 @@ def new_problems(before: List[CheckResult], after: List[CheckResult]) -> List[st
         b = old.get(r.check_id)
         if b is None:
             continue
-        if STATUS_ORDER.get(r.status, 3) < STATUS_ORDER.get(b.status, 3) or _problem_size(r) > _problem_size(b):
+        grew = r.size > b.size * (1 + 1e-6) + 1e-9
+        if STATUS_ORDER.get(r.status, 3) < STATUS_ORDER.get(b.status, 3) or grew:
             worse.append(f"{r.title} ({r.summary})")
     return worse
 

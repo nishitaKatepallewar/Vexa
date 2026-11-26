@@ -42,6 +42,27 @@ def is_skeletal(obj) -> bool:
     return any(m.type == "ARMATURE" and m.object is not None for m in obj.modifiers)
 
 
+def excluded_collections(view_layer) -> set:
+    """Collections switched off in the view layer (the checkbox in the Outliner), and
+    every collection inside them. Exporters skip their objects."""
+    out = set()
+
+    def walk(layer_collection, excluded):
+        excluded = excluded or layer_collection.exclude
+        if excluded:
+            out.add(layer_collection.collection.as_pointer())
+        for child in layer_collection.children:
+            walk(child, excluded)
+
+    walk(view_layer.layer_collection, False)
+    return out
+
+
+def is_exported(obj, excluded: set) -> bool:
+    """False if every collection the object is in is switched off in the view layer."""
+    return any(c.as_pointer() not in excluded for c in obj.users_collection)
+
+
 @dataclass
 class CheckScope:
     """The objects a check runs on.

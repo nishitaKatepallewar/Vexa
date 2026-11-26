@@ -220,7 +220,16 @@
   },
   {
     "name": "detect_negative_scale",
-    "description": "Finds meshes mirrored with a negative scale.\n\nTo fix by hand: apply scale, then Mesh > Normals > Recalculate Outside.",
+    "description": "Finds meshes mirrored with a negative scale.\n\nBy hand: apply scale, then Mesh > Normals > Recalculate Outside.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "apply_negative_scale",
+    "description": "Applies negative scale into the mesh and keeps every face pointing the way it\ndid, whichever Blender version does the apply (4.x leaves faces inside out).",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -243,7 +252,7 @@
   },
   {
     "name": "move_pivots_to_bottom_center",
-    "description": "Moves each flagged mesh's origin to the bottom centre without moving the mesh.\n\nSkips meshes with children or shared mesh data.",
+    "description": "Moves each flagged mesh's origin to the bottom centre without moving the mesh.\n\nLeaves meshes whose look would change (modifiers that work from the origin,\nsuch as Mirror), meshes with children, and shared, linked, animated or skinned\nmeshes.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -364,6 +373,15 @@
     }
   },
   {
+    "name": "relink_missing_textures",
+    "description": "Points each missing image at the file with the same name in the .blend's folder\nor its subfolders, only when exactly one such file exists.\n\nA stricter Find Missing Files: an image is never relinked to one of two files with\nthe same name. Images with no file (empty nodes, unsaved bakes) are left.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "detect_color_space_issues",
     "description": "Finds data maps (normal, roughness, metallic) set to sRGB, and colour maps set to Non-Color.\n\nFloat images (EXR, HDR) are skipped: they're linear on purpose.",
     "parameters": {
@@ -427,7 +445,7 @@
   },
   {
     "name": "remove_unused_material_slots",
-    "description": "Removes slots no face uses, with Blender's Remove Unused Slots.\n\nObjects with modifiers that may add faces with other materials (Solidify,\nBevel, Boolean, Geometry Nodes\u2026) are left: Blender's operator only looks at\nthe mesh's own faces, so it would remove slots those modifiers use.",
+    "description": "Removes slots no face uses, with Blender's Remove Unused Slots.\n\nObjects with modifiers that may add faces with other materials (Solidify,\nBevel, Boolean, Geometry Nodes\u2026) are left: Blender's operator only looks at\nthe mesh's own faces, so it would remove slots those modifiers use. Materials\nleft with no users at all are removed too, as Blender would on save.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -580,6 +598,15 @@
           "description": "Parameter allowed_types"
         }
       },
+      "required": []
+    }
+  },
+  {
+    "name": "move_unwanted_objects",
+    "description": "Moves unwanted objects into a \"Not for export\" collection that is switched off.\n\nNothing is deleted. FBX and glTF exports skip switched-off collections, and so\ndo Vexa's checks. Tick the collection in the Outliner to bring them back.\nObjects with children stay where they are.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
       "required": []
     }
   }

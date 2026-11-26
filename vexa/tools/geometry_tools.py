@@ -58,18 +58,36 @@ def _nonplanar_indices(mesh, threshold_deg: float) -> list:
 
 
 def _triangulate_faces(obj, face_indices) -> int:
-    """Triangulates the given faces in Object Mode. Returns how many were triangulated."""
+    """Triangulates the given faces in Object Mode. Returns how many were triangulated.
+
+    Quads are split along the shorter diagonal, as the Triangulate modifier does by
+    default, unless an edge already joins those corners: splitting there would leave
+    an edge shared by three faces (Blender's own Triangulate does this on Suzanne).
+    Then the other diagonal is used, and if both exist the quad is left as it is.
+    N-gons use Blender's Beauty method.
+    """
     if not face_indices:
         return 0
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.faces.ensure_lookup_table()
     faces = [bm.faces[i] for i in face_indices if i < len(bm.faces)]
-    bmesh.ops.triangulate(bm, faces=faces, quad_method="SHORT_EDGE", ngon_method="BEAUTY")
+    done = 0
+    for face in [f for f in faces if len(f.verts) == 4]:
+        a, b, c, d = face.verts
+        for v1, v2 in sorted(((a, c), (b, d)), key=lambda pair: (pair[0].co - pair[1].co).length):
+            if bm.edges.get((v1, v2)) is None:
+                bmesh.utils.face_split(face, v1, v2)
+                done += 1
+                break
+    ngons = [f for f in faces if f.is_valid and len(f.verts) > 4]
+    if ngons:
+        bmesh.ops.triangulate(bm, faces=ngons, quad_method="SHORT_EDGE", ngon_method="BEAUTY")
+        done += len(ngons)
     bm.to_mesh(obj.data)
     bm.free()
     obj.data.update()
-    return len(faces)
+    return done
 
 
 def _triangulate_issues(issues) -> int:

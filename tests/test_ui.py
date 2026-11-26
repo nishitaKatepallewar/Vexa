@@ -281,6 +281,22 @@ def run() -> int:
             assert bpy.ops.vexa.export_report(filepath=no_ext, open_after=False) == {"FINISHED"}
             assert os.path.exists(no_ext + ".html")
 
+    def scene_scope_skips_switched_off_collections():
+        from vexa.operators.check_ops import scope_objects
+        stash = bpy.data.collections.new("Old versions")
+        scene.collection.children.link(stash)
+        inner = bpy.data.collections.new("Older")
+        stash.children.link(inner)
+        old = bpy.data.objects.new("SM_Old", bpy.data.meshes.new("SM_Old"))
+        inner.objects.link(old)
+        assert old in scope_objects(bpy.context, "SCENE")
+        bpy.context.view_layer.layer_collection.children["Old versions"].exclude = True
+        assert old not in scope_objects(bpy.context, "SCENE")  # exporters skip it too
+        assert old not in scope_objects(bpy.context, "COLLECTION")
+        bpy.data.objects.remove(old)
+        bpy.data.collections.remove(inner)
+        bpy.data.collections.remove(stash)
+
     def team_presets_folder():
         from vexa.core.prefs import get_prefs
         with tempfile.TemporaryDirectory() as d:
@@ -389,6 +405,7 @@ def run() -> int:
         ("a fix that causes a new problem offers Undo", fix_that_causes_a_problem_offers_undo),
         ("toggle a check off and on", toggle_check),
         ("export HTML and JSON reports", export_report),
+        ("Scene scope skips switched-off collections", scene_scope_skips_switched_off_collections),
         ("team presets folder", team_presets_folder),
         ("preferences draw", preferences_draw),
         ("AI panel hidden without key", ai_panel_hidden_without_key),
