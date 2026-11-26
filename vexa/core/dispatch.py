@@ -18,7 +18,7 @@ class UnknownToolError(LookupError):
     """No tool is registered under the requested name."""
 
 
-def invoke(name: str, args: Optional[Dict[str, Any]] = None) -> str:
+def invoke(name: str, args: Optional[Dict[str, Any]] = None, confirmed: bool = False) -> str:
     """Runs a registered tool and returns a message for the user or the LLM.
 
     Arguments are matched to the tool's parameters by name, tolerating small
@@ -28,6 +28,10 @@ def invoke(name: str, args: Optional[Dict[str, Any]] = None) -> str:
     run them from timers, after any operator has finished, so Blender wouldn't record
     one otherwise.
 
+    A fix that isn't safe only runs with confirmed=True, i.e. after the artist read
+    what it changes (the Tools button's dialog). Otherwise, e.g. when the AI picks it,
+    the message says what it would do and where to run it.
+
     Raises UnknownToolError for an unknown name; errors from the tool propagate.
     """
     tool = AgentTools.get(name)
@@ -35,6 +39,9 @@ def invoke(name: str, args: Optional[Dict[str, Any]] = None) -> str:
         raise UnknownToolError(f"Tool '{name}' not found locally.")
     if tool.kind == CHECK:  # runs on the selection, selects what it found, summarizes
         return runner.run_check_as_tool(name, match_arguments(tool.func, args or {}))
+    if tool.kind == FIX and not (tool.fix.safe or confirmed):
+        return (f"{tool.display_name} needs your OK first. {tool.fix.confirm} "
+                f"To go ahead, click it under Tools > {tool.category}, or the wrench on its row in Results.")
     if tool.kind == FIX:  # finds its check's issues on the selection, then fixes them
         result = runner.run_fix_as_tool(name)
     else:

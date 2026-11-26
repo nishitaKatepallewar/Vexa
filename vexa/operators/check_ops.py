@@ -59,6 +59,7 @@ def sync_ui(context) -> None:
         item.status = result.status
         item.summary = result.summary
         item.fixable = result.fixable
+        item.fix_safe = result.fix_safe
         item.has_objects = bool(result.objects)
     wm.vexa_has_run = bool(STATE["preset_id"])
     redraw_3d_views(context)
@@ -77,6 +78,39 @@ def reload_presets(context=None) -> None:
     prefs = get_prefs(context)
     extra = [bpy.path.abspath(prefs.presets_dir)] if prefs and prefs.presets_dir else []
     load_presets(extra)
+
+
+def safe_fixes() -> list:
+    """Checks whose fix Fix All runs: something to fix, and the fix is safe."""
+    return [r.check_id for r in STATE["results"] if r.fixable and r.fix_safe]
+
+
+def fixes_to_review() -> list:
+    """Checks with a fix the artist must confirm on its own row first."""
+    return [r.check_id for r in STATE["results"] if r.fixable and not r.fix_safe]
+
+
+def confirm_dialog(operator, context, fix):
+    """Shows a dialog with the fix's confirm text; the fix runs if the artist clicks it."""
+    wm = context.window_manager
+    try:
+        return wm.invoke_props_dialog(operator, width=460, title=fix.display_name,
+                                      confirm_text=fix.display_name)
+    except TypeError:  # Blender 4.0 has no title or confirm_text
+        return wm.invoke_props_dialog(operator, width=460)
+
+
+def draw_confirm(layout, fix, objects=()) -> None:
+    """The dialog's text: what the fix changes, what it affects, how to undo it."""
+    col = layout.column(align=True)
+    for line in textwrap.wrap(fix.fix.confirm, 70):
+        col.label(text=line)
+    if objects:
+        col.separator()
+        names = ", ".join(objects[:4]) + (f" and {len(objects) - 4} more" if len(objects) > 4 else "")
+        col.label(text=f"Changes: {names}", icon="OBJECT_DATA")
+    col.separator()
+    col.label(text="Ctrl+Z undoes it.", icon="LOOP_BACK")
 
 
 def fix_one(context, check_name: str) -> str:
@@ -146,7 +180,7 @@ class VEXA_OT_select_issues(bpy.types.Operator):
 
 
 class VEXA_OT_fix_check(bpy.types.Operator):
-    """Apply this check's safe fix, then check again"""
+    """Apply this check's fix, then check again"""
 
     bl_idname = "vexa.fix_check"
     bl_label = "Fix"
@@ -157,7 +191,24 @@ class VEXA_OT_fix_check(bpy.types.Operator):
     @classmethod
     def description(cls, context, properties):
         fix = AgentTools.fix_for(properties.check_id)
-        return f"{fix.display_name}, then check again" if fix else cls.__doc__
+        if not fix:
+            return cls.__doc__
+        if fix.fix.safe:
+            return f"{fix.display_name}, then check again"
+        return f"{fix.display_name}: shows what it will change before it runs"
+
+    def invoke(self, context, event):
+        fix = AgentTools.fix_for(self.check_id)
+        if fix and not fix.fix.safe:
+            return confirm_dialog(self, context, fix)
+        return self.execute(context)
+
+    def draw(self, context):
+        fix = AgentTools.fix_for(self.check_id)
+        result = find_result(self.check_id)
+        if fix:
+            draw_confirm(self.layout, fix, [i.object_name for i in result.issues if i.object_name and not i.no_fix]
+                         if result else [])
 
     def execute(self, context):
         ensure_object_mode(context)
@@ -166,20 +217,24 @@ class VEXA_OT_fix_check(bpy.types.Operator):
 
 
 class VEXA_OT_fix_all(bpy.types.Operator):
-    """Apply every available safe fix in order, checking again after each"""
+    """Apply every safe fix in order, checking again after each. Fixes that need a look first are left for their own row"""
 
     bl_idname = "vexa.fix_all"
-    bl_label = "Fix All Safe Issues"
+    bl_label = "Fix All Safe"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        return any(r.fixable for r in STATE["results"])
+        return bool(safe_fixes())
 
     def execute(self, context):
         ensure_object_mode(context)
-        messages = [fix_one(context, name) for name in [r.check_id for r in STATE["results"] if r.fixable]]
-        self.report({"INFO"}, "; ".join(m for m in messages if m != "Nothing to fix") or "Nothing to fix")
+        messages = [fix_one(context, name) for name in safe_fixes()]
+        text = "; ".join(m for m in messages if m != "Nothing to fix") or "Nothing to fix"
+        review = fixes_to_review()
+        if review:
+            text += f". {len(review)} more to review on their own rows"
+        self.report({"INFO"}, text)
         return {"FINISHED"}
 
 

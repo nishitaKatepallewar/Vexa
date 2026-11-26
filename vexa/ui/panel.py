@@ -15,7 +15,7 @@ from ..core.presets import get_preset
 from ..core.registry import CHECK, AgentTools
 from ..core.results import overall_status, plural
 from ..core.runner import check_settings
-from ..operators.check_ops import STATE, disabled_checks
+from ..operators.check_ops import STATE, disabled_checks, fixes_to_review, safe_fixes
 from ..operators.quick_actions import RUNNING
 
 
@@ -158,8 +158,12 @@ class VEXA_PT_results(bpy.types.Panel):
         )
 
         row = layout.row(align=True)
-        row.operator("vexa.fix_all", text="Fix All Safe Issues", icon="TOOL_SETTINGS")
+        row.operator("vexa.fix_all", text=f"Fix All Safe ({len(safe_fixes())})", icon="TOOL_SETTINGS")
         row.operator("vexa.export_report", text="", icon="EXPORT")
+        review = len(fixes_to_review())
+        if review:
+            layout.label(text=f"{review} more {'fix needs' if review == 1 else 'fixes need'} a look first: "
+                              "use the wrench on the row", icon="INFO")
 
 
 class VEXA_PT_preset_checks(bpy.types.Panel):

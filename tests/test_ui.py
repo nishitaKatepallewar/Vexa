@@ -147,12 +147,46 @@ def run() -> int:
         assert st["detect_unapplied_transforms"] == "PASS", st
 
     def fix_all():
+        import dataclasses
+        from vexa.operators.check_ops import VEXA_OT_fix_all, fixes_to_review, safe_fixes
         for o in scene.objects:
             o.select_set(True)
         bpy.ops.vexa.run_checks()
-        assert bpy.ops.vexa.fix_all() == {"FINISHED"}
-        left = [r.check_id for r in STATE["results"] if r.fixable]
-        assert not left, left
+        # Fixes that need a look first must never run from Fix All.
+        ran, originals = [], {}
+        for fix in AgentTools.all("fix"):
+            if not fix.fix.safe:
+                originals[fix.name] = fix
+                AgentTools._tools[fix.name] = dataclasses.replace(
+                    fix, func=lambda issues, _n=fix.name, **k: ran.append(_n) or "ran")
+        try:
+            label = [t for k, t in draw_panel(panel.VEXA_PT_results) if k == "label" and "a look first" in t]
+            assert bool(label) == bool(fixes_to_review()), label
+            if safe_fixes():
+                assert bpy.ops.vexa.fix_all() == {"FINISHED"}
+            else:
+                assert not VEXA_OT_fix_all.poll(bpy.context)
+            assert not safe_fixes() and not ran, (safe_fixes(), ran)
+        finally:
+            AgentTools._tools.update(originals)
+
+    def fixes_that_need_care_ask_first():
+        from vexa.core import dispatch
+        from vexa.operators.check_ops import VEXA_OT_fix_check, draw_confirm
+        from vexa.operators.execute_prompt import _dispatch_tool
+        fix = AgentTools.get("triangulate_ngons")
+        assert not fix.fix.safe
+        log = []
+        draw_confirm(FakeLayout(log), fix, ["Crate", "Cube", "A", "B", "C"])
+        text = " ".join(t for k, t in log if k == "label")
+        assert "before baking" in text and "Changes: Crate, Cube, A, B and 1 more" in text, text
+        props = type("Props", (), {"check_id": "detect_ngons"})()
+        assert "shows what it will change" in VEXA_OT_fix_check.description(bpy.context, props)
+        n = len(bpy.data.objects["Crate"].data.polygons)
+        assert dispatch.invoke("triangulate_ngons").startswith("Triangulate N-gons needs your OK first.")
+        _dispatch_tool("triangulate_ngons", {})  # the AI picking it doesn't run it either
+        assert wm.vexa_last_response.startswith("Triangulate N-gons needs your OK first."), wm.vexa_last_response
+        assert len(bpy.data.objects["Crate"].data.polygons) == n
 
     def toggle_check():
         bpy.ops.vexa.toggle_check(check_id="detect_default_names")
@@ -269,14 +303,15 @@ def run() -> int:
         vexa.unregister()
         assert not hasattr(bpy.types.Scene, "vexa_preset")
 
-    for name, fn in [
+    steps = [
         ("presets listed in Target dropdown", presets_listed),
         ("panel draws before first run", panel_before_run),
         ("Check Assets runs Unity preset", run_checks),
         ("panels and result rows draw", panels_after_run),
         ("select problem faces", select_problem_faces),
         ("fix one check", fix_one),
-        ("fix all safe issues", fix_all),
+        ("Fix All runs only safe fixes", fix_all),
+        ("fixes that need care ask first", fixes_that_need_care_ask_first),
         ("toggle a check off and on", toggle_check),
         ("export HTML and JSON reports", export_report),
         ("team presets folder", team_presets_folder),
@@ -289,10 +324,11 @@ def run() -> int:
         ("session state is not saved in the .blend", session_state_is_not_saved_in_the_blend),
         ("disable and re-enable keeps every tool", reenable_keeps_tools),
         ("unregister cleanly", unregister_clean),
-    ]:
+    ]
+    for name, fn in steps:
         step(name, fn)
 
-    print(f"\n{19 - len(failures)}/19 UI tests passed on Blender {bpy.app.version_string}")
+    print(f"\n{len(steps) - len(failures)}/{len(steps)} UI tests passed on Blender {bpy.app.version_string}")
     return len(failures)
 
 
