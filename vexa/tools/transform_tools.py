@@ -210,6 +210,9 @@ IMPERIAL_UNITS = ("ADAPTIVE", "MILES", "FEET", "INCHES", "THOU")
 ROTATION_UNITS = ("DEGREES", "RADIANS")
 
 
+UNIT_SCALE_MESSAGE = "Scene unit scale doesn't match the target engine"
+
+
 def _validate_units(length_unit: str, rotation_unit: str) -> None:
     if length_unit and length_unit not in METRIC_UNITS + IMPERIAL_UNITS:
         raise ValueError(f"length_unit must be one of {', '.join(dict.fromkeys(METRIC_UNITS + IMPERIAL_UNITS))}")
@@ -235,7 +238,7 @@ def detect_wrong_unit_scale(scale_length: float = 1.0, length_unit: str = "", ro
     units = current().scene.unit_settings
     issues = []
     if abs(units.scale_length - scale_length) > 1e-6:
-        issues.append(Issue(None, "Scene unit scale doesn't match the target engine",
+        issues.append(Issue(None, UNIT_SCALE_MESSAGE,
                             value=f"{units.scale_length:g}", target=f"{scale_length:g}"))
     if length_unit and units.length_unit != length_unit:
         issues.append(Issue(None, "Scene length unit doesn't match",
@@ -246,24 +249,66 @@ def detect_wrong_unit_scale(scale_length: float = 1.0, length_unit: str = "", ro
     return issues
 
 
+def _transform_animated(obj) -> bool:
+    action = obj.animation_data.action if obj.animation_data else None
+    if action is None:
+        return False
+    fcurves = getattr(action, "fcurves", None)
+    if fcurves is None:  # Blender 5 layered actions: read the channels the object uses
+        try:
+            fcurves = [fc for layer in action.layers for strip in layer.strips
+                       for bag in strip.channelbags for fc in bag.fcurves]
+        except AttributeError:
+            return True  # can't tell: assume it is
+    return any(fc.data_path in {"location", "rotation_euler", "rotation_quaternion", "scale"} for fc in fcurves)
+
+
+def _unit_skip_reason(issue) -> str:
+    if issue.message != UNIT_SCALE_MESSAGE:
+        return ""
+    animated = [o.name for o in current().scene.objects if o.parent is None and _transform_animated(o)]
+    if animated:
+        return f"{animated[0]} has animated transforms, so the scene can't be rescaled to match"
+    return ""
+
+
 @AgentTools.register_fix(
     "detect_wrong_unit_scale", display_name="Set Units",
     confirm=(
-        "Changes the scene's unit settings without resizing anything, so everything exports "
-        "at a different size. For example, a 2 m crate exports as 2 cm after changing the "
-        "unit scale from 1.0 to 0.01."
+        "Changes the scene's units. If the unit scale changes, every object in the scene is "
+        "scaled about the world origin to match, so FBX exports keep their real size (a 2 m "
+        "crate stays 2 m). Objects get a scale such as 100 that Apply Transforms can apply "
+        "afterwards. glTF ignores the unit scale: if you export glTF, don't use this."
     ),
+    skip_reason=_unit_skip_reason,
 )
 def set_unit_scale(issues, scale_length: float = 1.0, length_unit: str = "", rotation_unit: str = "") -> str:
-    """Sets the scene's unit scale, and the length and rotation units if given."""
+    """Sets the scene's unit scale, and the length and rotation units if given.
+
+    When the unit scale changes, every top-level object is scaled about the world
+    origin by old / new scale, so real-world (and FBX export) sizes stay the same.
+    Children follow their parents. Object scale is changed, not mesh data, so
+    modifiers such as Bevel keep their look.
+    """
     _validate_units(length_unit, rotation_unit)
-    units = current().scene.unit_settings
-    units.scale_length = scale_length
-    if length_unit and length_unit != "ADAPTIVE":
-        units.system = "METRIC" if length_unit in METRIC_UNITS else "IMPERIAL"
-    if length_unit:
+    scene = current().scene
+    units = scene.unit_settings
+    done = []
+    if any(i.message == UNIT_SCALE_MESSAGE for i in issues):
+        factor = units.scale_length / scale_length
+        roots = [o for o in scene.objects if o.parent is None]
+        if abs(factor - 1.0) > 1e-9:
+            grow = Matrix.Scale(factor, 4)
+            for obj in roots:
+                obj.matrix_world = grow @ obj.matrix_world
+        units.scale_length = scale_length
+        done.append(f"scale {scale_length:g}" + (f" (scaled {len(roots)} objects by {factor:g})" if roots else ""))
+    if length_unit and units.length_unit != length_unit:
+        if length_unit != "ADAPTIVE":
+            units.system = "METRIC" if length_unit in METRIC_UNITS else "IMPERIAL"
         units.length_unit = length_unit
-    if rotation_unit:
+        done.append(length_unit.lower())
+    if rotation_unit and units.system_rotation != rotation_unit:
         units.system_rotation = rotation_unit
-    return "Set scene units to " + ", ".join(
-        [f"scale {scale_length:g}"] + [u.lower() for u in (length_unit, rotation_unit) if u])
+        done.append(rotation_unit.lower())
+    return "Set scene units: " + ", ".join(done) if done else "Nothing to change"

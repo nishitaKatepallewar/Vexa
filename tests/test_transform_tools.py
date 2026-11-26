@@ -70,6 +70,58 @@ def pivot_and_unit_scale():
     assert r.status == "PASS"
 
 
+def _real(v):
+    return round(v * bpy.context.scene.unit_settings.scale_length, 4)
+
+
+@test
+def set_units_keeps_the_real_size():
+    """Audit: changing 1.0 to 0.01 without rescaling exported a 2 m crate as 2 cm."""
+    import os
+    import tempfile
+    fresh()
+    crate = cube("SM_Crate", size=2.0, loc=(3, 0, 0))
+    crate.modifiers.new("Bevel", "BEVEL").width = 0.1
+    lid = cube("SM_Lid", size=1.0, loc=(3, 0, 1.5))
+    lid.parent = crate
+    lid.matrix_parent_inverse = crate.matrix_world.inverted()
+    def shape(obj):  # the evaluated mesh, in real-world metres
+        bpy.context.view_layer.update()
+        ev = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        return sorted(tuple(_real(c) for c in obj.matrix_world @ v.co) for v in ev.data.vertices)
+
+    before = shape(crate)
+    _, r = run("detect_wrong_unit_scale", scale_length=0.01)
+    assert r.fixable and not r.fix_safe
+    msg, r = fix("detect_wrong_unit_scale", scale_length=0.01)
+    assert r.status == "PASS", (msg, r.summary)
+    assert shape(crate) == before  # same size, place and bevel in metres
+    assert _real(crate.dimensions.x) == 2.0, crate.dimensions
+    assert _real((lid.matrix_world.translation - crate.matrix_world.translation).z) == 1.5
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "crate.fbx")
+        bpy.ops.export_scene.fbx(filepath=path, use_selection=False)
+        fresh()
+        bpy.ops.import_scene.fbx(filepath=path)
+        crate = bpy.data.objects["SM_Crate"]
+        assert round(crate.dimensions.x, 3) == 2.0, crate.dimensions  # still 2 m in the FBX
+
+
+@test
+def set_units_leaves_animated_scenes_alone():
+    fresh()
+    crate = cube()
+    crate.keyframe_insert("location", frame=1)
+    bpy.context.scene.unit_settings.system_rotation = "RADIANS"
+    _, r = run("detect_wrong_unit_scale", scale_length=0.01, rotation_unit="DEGREES")
+    scale_issue = next(i for i in r.issues if "scale" in i.message)
+    assert "animated" in scale_issue.no_fix and r.fixable, r.issues  # rotation unit can still be fixed
+    msg, r = fix("detect_wrong_unit_scale", scale_length=0.01, rotation_unit="DEGREES")
+    units = bpy.context.scene.unit_settings
+    assert units.scale_length == 1.0 and units.system_rotation == "DEGREES", msg
+    assert "animated" in msg and abs(crate.scale.x - 1.0) < 1e-6, msg
+
+
 @test
 def length_and_rotation_units():
     fresh()

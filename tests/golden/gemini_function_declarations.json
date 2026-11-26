@@ -274,7 +274,7 @@
   },
   {
     "name": "set_unit_scale",
-    "description": "Sets the scene's unit scale, and the length and rotation units if given.",
+    "description": "Sets the scene's unit scale, and the length and rotation units if given.\n\nWhen the unit scale changes, every top-level object is scaled about the world\norigin by old / new scale, so real-world (and FBX export) sizes stay the same.\nChildren follow their parents. Object scale is changed, not mesh data, so\nmodifiers such as Bevel keep their look.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
