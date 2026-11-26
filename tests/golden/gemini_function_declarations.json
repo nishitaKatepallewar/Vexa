@@ -361,7 +361,7 @@
   },
   {
     "name": "detect_color_space_issues",
-    "description": "Finds data maps (normal, roughness, metallic) set to sRGB, and colour maps set to Non-Color.",
+    "description": "Finds data maps (normal, roughness, metallic) set to sRGB, and colour maps set to Non-Color.\n\nFloat images (EXR, HDR) are skipped: they're linear on purpose.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
@@ -370,7 +370,7 @@
   },
   {
     "name": "fix_color_spaces",
-    "description": "Sets each flagged image to the colour space its role needs.",
+    "description": "Sets each flagged image to the colour space its role needs.\n\nThe role comes from the socket the image is plugged into directly: Base Color\nmeans sRGB; Normal Map, Bump, Roughness and Metallic mean Non-Color.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

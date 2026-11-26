@@ -137,14 +137,17 @@ def _expected_color_space(node, tree):
     is_quick_action=True,
 )
 def detect_color_space_issues() -> list:
-    """Finds data maps (normal, roughness, metallic) set to sRGB, and colour maps set to Non-Color."""
+    """Finds data maps (normal, roughness, metallic) set to sRGB, and colour maps set to Non-Color.
+
+    Float images (EXR, HDR) are skipped: they're linear on purpose.
+    """
     issues, seen = [], set()
     for obj in current().meshes:
         for mat in _materials(obj):
             for node in _image_nodes(mat):
                 image = node.image
-                if image is None or image.name in seen:
-                    continue
+                if image is None or image.name in seen or image.is_float:
+                    continue  # float images (EXR, HDR) hold linear values on purpose
                 role, expected = _expected_color_space(node, mat.node_tree)
                 actual = image.colorspace_settings.name
                 if expected and actual != expected:
@@ -154,16 +157,29 @@ def detect_color_space_issues() -> list:
     return issues
 
 
+def _color_space_skip_reason(issue) -> str:
+    """An image used both as colour and as data can't have one right colour space."""
+    wanted = set()
+    for mat in bpy.data.materials:
+        for node in _image_nodes(mat):
+            if node.image is not None and node.image.name == issue.value:
+                wanted.add(_expected_color_space(node, mat.node_tree)[1])
+    wanted.discard(None)
+    if len(wanted) > 1:
+        return "used both as a colour map and as a data map"
+    return ""
+
+
 @AgentTools.register_fix(
-    "detect_color_space_issues", display_name="Fix Color Spaces",
-    confirm=(
-        "Sets each flagged image to the colour space its role needs: Non-Color for normal, "
-        "roughness and metallic maps, sRGB for colour maps. The role comes from the socket "
-        "the image is plugged into."
-    ),
+    "detect_color_space_issues", display_name="Fix Color Spaces", safe=True,
+    skip_reason=_color_space_skip_reason,
 )
 def fix_color_spaces(issues) -> str:
-    """Sets each flagged image to the colour space its role needs."""
+    """Sets each flagged image to the colour space its role needs.
+
+    The role comes from the socket the image is plugged into directly: Base Color
+    means sRGB; Normal Map, Bump, Roughness and Metallic mean Non-Color.
+    """
     fixed = 0
     for issue in issues:
         image = bpy.data.images.get(issue.value)

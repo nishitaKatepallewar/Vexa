@@ -52,6 +52,32 @@ def normal_map_in_srgb_is_flagged_and_fixed():
 
 
 @test
+def color_space_leaves_float_and_dual_use_images():
+    c = _crate_with_textures()
+    nt = c.data.materials[0].node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    hdr = nt.nodes.new("ShaderNodeTexImage")
+    hdr.image = bpy.data.images.new("T_Albedo_EXR", 4, 4, float_buffer=True)
+    hdr.image.colorspace_settings.name = "Linear Rec.709"  # right for a float colour map
+    nt.links.new(hdr.outputs["Color"], bsdf.inputs["Base Color"])
+    _, r = run("detect_color_space_issues")
+    assert [i.value for i in r.issues] == ["T_Crate_N"], r.issues  # the EXR isn't flagged
+
+    # T_Crate_N also feeds Roughness in another material, set up as colour there.
+    other = bpy.data.materials.new("M_Other")
+    if other.node_tree is None:
+        other.use_nodes = True
+    node = other.node_tree.nodes.new("ShaderNodeTexImage")
+    node.image = bpy.data.images["T_Crate_N"]
+    other_bsdf = next(n for n in other.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    other.node_tree.links.new(node.outputs["Color"], other_bsdf.inputs["Base Color"])
+    _, r = run("detect_color_space_issues")
+    assert not r.fixable and r.issues[0].no_fix == "used both as a colour map and as a data map", r.issues
+    fix("detect_color_space_issues")
+    assert bpy.data.images["T_Crate_N"].colorspace_settings.name == "sRGB"
+
+
+@test
 def texture_sizes():
     _crate_with_textures()
     _, r = run("detect_invalid_texture_sizes")
