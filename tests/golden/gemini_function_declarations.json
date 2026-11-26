@@ -505,13 +505,17 @@
   },
   {
     "name": "detect_missing_name_prefix",
-    "description": "Finds render meshes missing a required name prefix. Collision meshes are ignored.\n\nprefix: the prefix every render mesh name must start with.",
+    "description": "Finds render meshes missing a required name prefix. Collision meshes are ignored.\n\nprefix: the prefix every static mesh name must start with.\nskeletal_prefix: the prefix for skinned (skeletal) meshes. Empty: not checked.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
         "prefix": {
           "type": "STRING",
           "description": "Parameter prefix"
+        },
+        "skeletal_prefix": {
+          "type": "STRING",
+          "description": "Parameter skeletal_prefix"
         }
       },
       "required": []
@@ -519,7 +523,7 @@
   },
   {
     "name": "add_name_prefix",
-    "description": "Adds the prefix to flagged meshes and renames their collision meshes to match.",
+    "description": "Adds the prefix to flagged meshes (SK_ for skeletal ones) and renames their\ncollision meshes to match, wherever they are in the scene.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
