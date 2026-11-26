@@ -65,12 +65,19 @@ def sync_ui(context) -> None:
     redraw_3d_views(context)
 
 
-def rerun(context) -> None:
+def check_now(context) -> list:
+    """Runs the last check's target and scope again on the scene as it is now."""
     preset = get_preset(STATE["preset_id"])
     if not preset:
-        return
+        return []
     objs = scope_objects(context, STATE["scope"])
-    STATE["results"] = runner.run_preset(preset, objs, context.scene, disabled_checks(context.scene))
+    return runner.run_preset(preset, objs, context.scene, disabled_checks(context.scene))
+
+
+def rerun(context) -> None:
+    if not get_preset(STATE["preset_id"]):
+        return
+    STATE["results"] = check_now(context)
     sync_ui(context)
 
 
@@ -113,15 +120,28 @@ def draw_confirm(layout, fix, objects=()) -> None:
     col.label(text="Ctrl+Z undoes it.", icon="LOOP_BACK")
 
 
-def fix_one(context, check_name: str) -> str:
-    result = find_result(check_name)
+def fix_one(context, check_name: str, before=None):
+    """Fixes one check's issues, checks again, and returns (message, results after).
+
+    The issues come from `before`, results for the scene as it is now. Without it the
+    check runs again first: the artist may have edited the scene since the last
+    check, and a fix must never act on stale results (e.g. old face numbers).
+    """
     preset = get_preset(STATE["preset_id"])
-    if not (result and preset and result.fixable):
-        return "Nothing to fix"
+    if not preset:
+        return "Nothing to fix", STATE["results"]
+    if before is None:
+        before = check_now(context)
+    result = next((r for r in before if r.check_id == check_name), None)
+    if not (result and result.fixable):
+        STATE["results"] = before
+        sync_ui(context)
+        return "Nothing to fix", before
     scope = build_scope(scope_objects(context, STATE["scope"]), context.scene)
     message = runner.apply_fix(result, preset.settings(check_name), scope)
-    rerun(context)
-    return message
+    STATE["results"] = check_now(context)
+    sync_ui(context)
+    return message, STATE["results"]
 
 
 # ---------- operators ----------
@@ -212,7 +232,7 @@ class VEXA_OT_fix_check(bpy.types.Operator):
 
     def execute(self, context):
         ensure_object_mode(context)
-        self.report({"INFO"}, fix_one(context, self.check_id))
+        self.report({"INFO"}, fix_one(context, self.check_id)[0])
         return {"FINISHED"}
 
 
@@ -229,7 +249,10 @@ class VEXA_OT_fix_all(bpy.types.Operator):
 
     def execute(self, context):
         ensure_object_mode(context)
-        messages = [fix_one(context, name) for name in safe_fixes()]
+        results, messages = check_now(context), []
+        for name in [r.check_id for r in results if r.fixable and r.fix_safe]:
+            message, results = fix_one(context, name, results)
+            messages.append(message)
         text = "; ".join(m for m in messages if m != "Nothing to fix") or "Nothing to fix"
         review = fixes_to_review()
         if review:

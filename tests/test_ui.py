@@ -188,6 +188,29 @@ def run() -> int:
         assert wm.vexa_last_response.startswith("Triangulate N-gons needs your OK first."), wm.vexa_last_response
         assert len(bpy.data.objects["Crate"].data.polygons) == n
 
+    def fix_uses_the_scene_as_it_is_now():
+        import bmesh
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.ops.mesh.primitive_cylinder_add(vertices=8, location=(0, 20, 0))
+        cyl = bpy.context.active_object
+        scene.vexa_scope = "SELECTED"
+        bpy.ops.vexa.run_checks()
+        # The artist deletes a face before fixing: every face number after it shifts.
+        bm = bmesh.new()
+        bm.from_mesh(cyl.data)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[bm.faces[0]], context="FACES_ONLY")
+        bm.to_mesh(cyl.data)
+        bm.free()
+        quads = sum(len(p.vertices) == 4 for p in cyl.data.polygons)
+        assert bpy.ops.vexa.fix_check(check_id="detect_ngons") == {"FINISHED"}
+        sizes = [len(p.vertices) for p in cyl.data.polygons]
+        assert max(sizes) <= 4 and sizes.count(4) == quads, sizes  # only the n-gons changed
+        bpy.data.objects.remove(cyl)
+        for o in scene.objects:
+            o.select_set(True)
+        bpy.ops.vexa.run_checks()
+
     def toggle_check():
         bpy.ops.vexa.toggle_check(check_id="detect_default_names")
         assert "detect_default_names" not in {r.check_id for r in STATE["results"]}
@@ -312,6 +335,7 @@ def run() -> int:
         ("fix one check", fix_one),
         ("Fix All runs only safe fixes", fix_all),
         ("fixes that need care ask first", fixes_that_need_care_ask_first),
+        ("a fix uses the scene as it is now", fix_uses_the_scene_as_it_is_now),
         ("toggle a check off and on", toggle_check),
         ("export HTML and JSON reports", export_report),
         ("team presets folder", team_presets_folder),
