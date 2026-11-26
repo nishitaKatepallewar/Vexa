@@ -6,6 +6,7 @@ selected meshes when a check is called as a quick action or by the AI.
 """
 
 import contextlib
+import re
 from dataclasses import dataclass, field
 from typing import Iterable, List
 
@@ -17,6 +18,18 @@ COLLISION_PREFIXES = ("UCX_", "UBX_", "UCP_", "USP_")
 def is_collision_name(name: str) -> bool:
     """True for Unreal custom collision meshes (UCX_, UBX_, UCP_, USP_)."""
     return name.upper().startswith(COLLISION_PREFIXES)
+
+
+def collision_base(name: str):
+    """The render mesh a collision mesh belongs to: UCX_SM_Crate_01 -> SM_Crate.
+
+    The trailing _NN index is optional. None if the name isn't a collision name.
+    """
+    for p in COLLISION_PREFIXES:
+        if name.upper().startswith(p):
+            rest = name[len(p):].split(".")[0]
+            return re.sub(r"_\d+$", "", rest)
+    return None
 
 
 @dataclass

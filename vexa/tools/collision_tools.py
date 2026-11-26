@@ -1,19 +1,8 @@
 """Collision checks for Unreal custom collision meshes (UCX_, UBX_, UCP_, USP_)."""
 
-import re
-
 from ..core.registry import AgentTools
 from ..core.results import Issue
-from ..core.scope import COLLISION_PREFIXES, current, is_collision_name
-
-
-def _collision_base(name: str):
-    """UCX_SM_Crate_01 -> SM_Crate. The trailing _NN index is optional."""
-    for p in COLLISION_PREFIXES:
-        if name.upper().startswith(p):
-            rest = name[len(p):].split(".")[0]
-            return re.sub(r"_\d+$", "", rest)
-    return None
+from ..core.scope import collision_base, current, is_collision_name
 
 
 def _is_convex(obj, tol: float = 1e-4) -> bool:
@@ -43,7 +32,7 @@ def detect_invalid_collision_meshes() -> list:
     render_names = {o.name for o in scope.meshes}
     issues = []
     for col in scope.collision:
-        base = _collision_base(col.name)
+        base = collision_base(col.name)
         if base not in render_names and col.name.split(".")[0][4:] not in render_names:
             issues.append(Issue(col.name, "Collision name doesn't match any mesh",
                                 value=col.name, target="UCX_<MeshName>_01"))
@@ -66,7 +55,7 @@ def detect_missing_collision() -> list:
     mesh is enough.
     """
     scope = current()
-    covered = {_collision_base(o.name) for o in scope.scene.objects
+    covered = {collision_base(o.name) for o in scope.scene.objects
                if o.type == "MESH" and is_collision_name(o.name)}
     return [Issue(obj.name, "No collision mesh", value="none", target=f"UCX_{obj.name}_01")
             for obj in scope.meshes if obj.name.split(".")[0] not in covered]
