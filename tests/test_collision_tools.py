@@ -37,5 +37,26 @@ def missing_collision():
     assert [(i.object_name, i.target) for i in r.issues] == [("SM_Barrel", "UCX_SM_Barrel_01")], r.issues
 
 
+
+def _rigged(name="SK_Body", loc=(0, 0, 0)):
+    rig = bpy.data.objects.new(name + "_Rig", bpy.data.armatures.new(name + "_Rig"))
+    bpy.context.scene.collection.objects.link(rig)
+    body = cube(name, loc=loc)
+    body.modifiers.new("Armature", "ARMATURE").object = rig
+    return body, rig
+
+
+@test
+def skinned_meshes_need_no_ucx_collision():
+    """Audit: a skeletal mesh was flagged, but engines can't use UCX_ on skeletal meshes."""
+    fresh()
+    _rigged()
+    sword = cube("SM_Sword", loc=(5, 0, 0))  # held in a hand bone: still a static mesh
+    sword.parent = bpy.data.objects["SK_Body_Rig"]
+    sword.parent_type = "OBJECT"
+    _, r = run("detect_missing_collision")
+    assert [i.object_name for i in r.issues] == ["SM_Sword"], r.issues
+
+
 if __name__ == "__main__":
     main(globals())

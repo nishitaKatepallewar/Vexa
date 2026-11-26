@@ -2,7 +2,7 @@
 
 from ..core.registry import AgentTools
 from ..core.results import Issue
-from ..core.scope import collision_base, current, is_collision_name
+from ..core.scope import collision_base, current, is_collision_name, is_skeletal
 
 
 def _is_convex(obj, tol: float = 1e-4) -> bool:
@@ -49,13 +49,15 @@ def detect_invalid_collision_meshes() -> list:
     pass_text="All have collision",
 )
 def detect_missing_collision() -> list:
-    """Finds meshes with no custom collision mesh (UCX_, UBX_, UCP_ or USP_<MeshName>_NN).
+    """Finds static meshes with no custom collision mesh (UCX_, UBX_, UCP_ or
+    USP_<MeshName>_NN).
 
     Collision meshes are looked up in the whole scene, so selecting only the render
-    mesh is enough.
+    mesh is enough. Skinned meshes are skipped: engines can't use UCX_ collision on
+    skeletal meshes (Unreal uses a Physics Asset instead).
     """
     scope = current()
     covered = {collision_base(o.name) for o in scope.scene.objects
                if o.type == "MESH" and is_collision_name(o.name)}
     return [Issue(obj.name, "No collision mesh", value="none", target=f"UCX_{obj.name}_01")
-            for obj in scope.meshes if obj.name.split(".")[0] not in covered]
+            for obj in scope.meshes if obj.name.split(".")[0] not in covered and not is_skeletal(obj)]

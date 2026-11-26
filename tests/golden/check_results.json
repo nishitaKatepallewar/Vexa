@@ -201,7 +201,7 @@
     "detect_missing_name_prefix": {"status": "WARNING", "summary": "SK_Body / SM_…", "issues": [["SK_Body", "Missing SM_ prefix", "SK_Body", "SM_…", null, ""]]},
     "detect_missing_name_prefix (strict)": {"status": "PASS", "summary": "All prefixed", "issues": []},
     "detect_invalid_collision_meshes": {"status": "PASS", "summary": "Valid", "issues": []},
-    "detect_missing_collision": {"status": "WARNING", "summary": "none / UCX_SK_Body_01", "issues": [["SK_Body", "No collision mesh", "none", "UCX_SK_Body_01", null, ""]]},
+    "detect_missing_collision": {"status": "PASS", "summary": "All have collision", "issues": []},
     "detect_excess_bone_influences": {"status": "WARNING", "summary": "2 verts / ≤ 4", "issues": [["SK_Body", "2 vertices over 4 influences", "2 verts", "≤ 4", "VERT", "0-1"]]},
     "detect_excess_bone_influences (strict)": {"status": "WARNING", "summary": "4 verts / ≤ 2", "issues": [["SK_Body", "4 vertices over 2 influences", "4 verts", "≤ 2", "VERT", "0-3"]]},
     "detect_unwanted_objects": {"status": "PASS", "summary": "None", "issues": []},

@@ -537,7 +537,7 @@
   },
   {
     "name": "detect_missing_collision",
-    "description": "Finds meshes with no custom collision mesh (UCX_, UBX_, UCP_ or USP_<MeshName>_NN).\n\nCollision meshes are looked up in the whole scene, so selecting only the render\nmesh is enough.",
+    "description": "Finds static meshes with no custom collision mesh (UCX_, UBX_, UCP_ or\nUSP_<MeshName>_NN).\n\nCollision meshes are looked up in the whole scene, so selecting only the render\nmesh is enough. Skinned meshes are skipped: engines can't use UCX_ collision on\nskeletal meshes (Unreal uses a Physics Asset instead).",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
