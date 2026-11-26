@@ -88,16 +88,18 @@ def _register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
     props.register_props()
+    check_ops.register_handlers()
     check_ops.reload_presets()
 
 
 def _unregister() -> None:
     """Unregisters the add-on classes and properties."""
+    check_ops.unregister_handlers()
     props.unregister_props()
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
 
-    check_ops.STATE.update(preset_id="", scope="", results=[])
+    check_ops.STATE.update(preset_id="", scope="", results=[], warning=None)
 
     AgentTools.clear()
 

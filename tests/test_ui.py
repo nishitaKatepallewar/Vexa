@@ -211,6 +211,54 @@ def run() -> int:
             o.select_set(True)
         bpy.ops.vexa.run_checks()
 
+    def fix_that_causes_a_problem_offers_undo():
+        import dataclasses
+        from vexa.operators import check_ops
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.ops.mesh.primitive_cube_add(location=(0, 30, 0))
+        box = bpy.context.active_object
+        box.name = "SM_Box"
+        box.scale = (2, 2, 2)
+        scene.vexa_scope = "SELECTED"
+        bpy.ops.vexa.run_checks()
+        real = AgentTools.get("apply_transforms")
+
+        def apply_and_break(issues, **kwargs):  # a broken fix: also adds an n-gon
+            msg = real.func(issues, **kwargs)
+            import bmesh
+            bm = bmesh.new()
+            bm.from_mesh(box.data)
+            bm.faces.ensure_lookup_table()
+            bmesh.ops.dissolve_faces(bm, faces=bm.faces[:2])
+            bm.to_mesh(box.data)
+            bm.free()
+            return msg
+
+        AgentTools._tools["apply_transforms"] = dataclasses.replace(real, func=apply_and_break)
+        try:
+            assert bpy.ops.vexa.fix_check(check_id="detect_unapplied_transforms") == {"FINISHED"}
+        finally:
+            AgentTools._tools["apply_transforms"] = real
+        warning = STATE["warning"]
+        assert warning and warning["fix"] == "Apply Transforms", warning
+        assert any(p.startswith("N-gons") for p in warning["problems"]), warning
+        log = draw_panel(panel.VEXA_PT_results)
+        assert ("operator", "ed.undo") in log and ("operator", "vexa.dismiss_warning") in log, log
+        assert any(k == "label" and "caused new problems" in t for k, t in log), log
+        # Undo shows results for the restored scene; Keep just hides the message.
+        assert check_ops._after_undo in bpy.app.handlers.undo_post
+        check_ops._after_undo()
+        assert STATE["warning"] is None
+        check_ops._rerun_from_timer()
+        STATE["warning"] = {"fix": "x", "problems": ["y"]}
+        assert bpy.ops.vexa.dismiss_warning() == {"FINISHED"} and STATE["warning"] is None
+        bpy.ops.vexa.run_checks()
+        assert ("operator", "ed.undo") not in draw_panel(panel.VEXA_PT_results)
+        bpy.data.objects.remove(box)
+        for o in scene.objects:
+            o.select_set(True)
+        bpy.ops.vexa.run_checks()
+
     def toggle_check():
         bpy.ops.vexa.toggle_check(check_id="detect_default_names")
         assert "detect_default_names" not in {r.check_id for r in STATE["results"]}
@@ -323,8 +371,10 @@ def run() -> int:
         assert not panel.VEXA_PT_results.poll(bpy.context)  # no stale results after re-enabling
 
     def unregister_clean():
+        from vexa.operators import check_ops
         vexa.unregister()
         assert not hasattr(bpy.types.Scene, "vexa_preset")
+        assert check_ops._after_undo not in bpy.app.handlers.undo_post
 
     steps = [
         ("presets listed in Target dropdown", presets_listed),
@@ -336,6 +386,7 @@ def run() -> int:
         ("Fix All runs only safe fixes", fix_all),
         ("fixes that need care ask first", fixes_that_need_care_ask_first),
         ("a fix uses the scene as it is now", fix_uses_the_scene_as_it_is_now),
+        ("a fix that causes a new problem offers Undo", fix_that_causes_a_problem_offers_undo),
         ("toggle a check off and on", toggle_check),
         ("export HTML and JSON reports", export_report),
         ("team presets folder", team_presets_folder),

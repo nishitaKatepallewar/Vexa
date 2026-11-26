@@ -10,7 +10,7 @@ from typing import Dict, Iterable, List, Optional, Set
 from . import scope as scope_mod
 from .presets import Preset
 from .registry import CHECK, AgentTools
-from .results import PASS, CheckResult, Issue, problem_title, summarize
+from .results import PASS, STATUS_ORDER, CheckResult, Issue, problem_title, summarize
 
 
 def check_settings(check_name: str, overrides: Optional[Dict] = None) -> Dict:
@@ -85,6 +85,28 @@ def apply_fix(result: CheckResult, overrides: Optional[Dict], scope: scope_mod.C
     if left:
         message += ". Left for you: " + "; ".join(left[:5]) + ("…" if len(left) > 5 else "")
     return message
+
+
+def _problem_size(result: CheckResult) -> int:
+    """How much is wrong: flagged faces, edges or vertices, or one per other issue."""
+    return sum(max(1, len(i.indices)) for i in result.issues)
+
+
+def new_problems(before: List[CheckResult], after: List[CheckResult]) -> List[str]:
+    """Checks that got worse between two runs of the same target, e.g. around a fix.
+
+    Worse means a worse status (a pass that now fails, a warning that's now an error)
+    or more flagged elements than before. Returns "Title (summary)" for each.
+    """
+    old = {r.check_id: r for r in before}
+    worse = []
+    for r in after:
+        b = old.get(r.check_id)
+        if b is None:
+            continue
+        if STATUS_ORDER.get(r.status, 3) < STATUS_ORDER.get(b.status, 3) or _problem_size(r) > _problem_size(b):
+            worse.append(f"{r.title} ({r.summary})")
+    return worse
 
 
 # ---------- checks and fixes called as tools (quick actions, Gemini) ----------

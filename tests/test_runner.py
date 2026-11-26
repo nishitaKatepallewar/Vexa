@@ -115,5 +115,22 @@ def loading_with_no_preset_files_is_empty_not_recursive():
             load_presets()
 
 
+@test
+def new_problems_lists_checks_that_got_worse():
+    from vexa.core.results import CheckResult
+
+    def res(check, status, faces=0, others=0):
+        issues = [Issue("A", "x", element="FACE", indices=list(range(faces)))] if faces else []
+        issues += [Issue("A", "y") for _ in range(others)]
+        return CheckResult(check, check.title(), status, f"{faces + others} issues", issues=issues)
+
+    before = [res("ngons", "WARNING", faces=4), res("normals", "PASS"), res("names", "WARNING", others=1),
+              res("budget", "WARNING", others=1)]
+    after = [res("ngons", "PASS"), res("normals", "ERROR", faces=2), res("names", "WARNING", others=2),
+             res("budget", "ERROR", others=1), res("new_check", "ERROR", others=3)]
+    assert runner.new_problems(before, after) == ["Normals (2 issues)", "Names (2 issues)", "Budget (1 issues)"]
+    assert runner.new_problems(before, before) == []
+
+
 if __name__ == "__main__":
     main(globals())

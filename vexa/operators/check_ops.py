@@ -18,7 +18,8 @@ from .feedback import redraw_3d_views
 
 # The last run, kept in memory (not saved in the .blend). It holds names, never
 # references to Blender data (see the API docs, "Troubleshooting Errors & Crashes").
-STATE = {"preset_id": "", "scope": "", "results": []}
+# "warning" is set when a fix made another check worse: {"fix": name, "problems": [...]}.
+STATE = {"preset_id": "", "scope": "", "results": [], "warning": None}
 
 
 # ---------- helpers ----------
@@ -29,7 +30,10 @@ def scope_objects(context, scope: str) -> list:
         return list(context.view_layer.active_layer_collection.collection.all_objects)
     if scope == "SCENE":
         return list(context.scene.objects)
-    return list(context.selected_objects)
+    selected = getattr(context, "selected_objects", None)  # missing in timers
+    if selected is None:
+        selected = [o for o in context.view_layer.objects if o.select_get()]
+    return list(selected)
 
 
 def disabled_checks(scene) -> set:
@@ -140,8 +144,39 @@ def fix_one(context, check_name: str, before=None):
     scope = build_scope(scope_objects(context, STATE["scope"]), context.scene)
     message = runner.apply_fix(result, preset.settings(check_name), scope)
     STATE["results"] = check_now(context)
+    worse = runner.new_problems(before, STATE["results"])
+    if worse:
+        fix = AgentTools.fix_for(check_name)
+        STATE["warning"] = {"fix": fix.display_name, "problems": worse}
+        message += f". It also caused: {'; '.join(worse)}. Undo it with Ctrl+Z"
     sync_ui(context)
     return message, STATE["results"]
+
+
+@bpy.app.handlers.persistent
+def _after_undo(*_args) -> None:
+    """After undoing a fix that caused problems, show results for the restored scene."""
+    if STATE["warning"]:
+        STATE["warning"] = None
+        bpy.app.timers.register(_rerun_from_timer, first_interval=0.0)
+
+
+def _rerun_from_timer():
+    try:
+        rerun(bpy.context)
+    except Exception:  # noqa: BLE001 - results stay as they were; Check Assets refreshes them
+        pass
+    return None
+
+
+def register_handlers() -> None:
+    if _after_undo not in bpy.app.handlers.undo_post:
+        bpy.app.handlers.undo_post.append(_after_undo)
+
+
+def unregister_handlers() -> None:
+    if _after_undo in bpy.app.handlers.undo_post:
+        bpy.app.handlers.undo_post.remove(_after_undo)
 
 
 # ---------- operators ----------
@@ -169,7 +204,7 @@ class VEXA_OT_run_checks(bpy.types.Operator):
             self.report({"WARNING"}, where)
             return {"CANCELLED"}
         ensure_object_mode(context)
-        STATE.update(preset_id=preset.id, scope=scene.vexa_scope)
+        STATE.update(preset_id=preset.id, scope=scene.vexa_scope, warning=None)
         STATE["results"] = runner.run_preset(preset, objs, scene, disabled_checks(scene))
         sync_ui(context)
         errors = sum(1 for r in STATE["results"] if r.status == "ERROR")
@@ -253,11 +288,27 @@ class VEXA_OT_fix_all(bpy.types.Operator):
         for name in [r.check_id for r in results if r.fixable and r.fix_safe]:
             message, results = fix_one(context, name, results)
             messages.append(message)
+            if STATE["warning"]:  # stop here: one Ctrl+Z undoes this whole Fix All
+                STATE["warning"]["undo"] = "Undo Fix All"
+                messages.append("Stopped there")
+                break
         text = "; ".join(m for m in messages if m != "Nothing to fix") or "Nothing to fix"
         review = fixes_to_review()
         if review:
             text += f". {len(review)} more to review on their own rows"
         self.report({"INFO"}, text)
+        return {"FINISHED"}
+
+
+class VEXA_OT_dismiss_warning(bpy.types.Operator):
+    """Keep the fix and hide this message"""
+
+    bl_idname = "vexa.dismiss_warning"
+    bl_label = "Keep"
+
+    def execute(self, context):
+        STATE["warning"] = None
+        redraw_3d_views(context)
         return {"FINISHED"}
 
 
@@ -369,6 +420,7 @@ CLASSES = (
     VEXA_OT_select_issues,
     VEXA_OT_fix_check,
     VEXA_OT_fix_all,
+    VEXA_OT_dismiss_warning,
     VEXA_OT_explain_check,
     VEXA_OT_toggle_check,
     VEXA_OT_export_report,

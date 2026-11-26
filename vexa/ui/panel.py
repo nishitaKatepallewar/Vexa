@@ -152,6 +152,18 @@ class VEXA_PT_results(bpy.types.Panel):
         if _results_are_stale(context.scene):
             layout.label(text="Target or scope changed. Check again to update.", icon="FILE_REFRESH")
 
+        warning = STATE["warning"]
+        if warning:
+            box = layout.box()
+            col = box.column(align=True)
+            col.alert = True
+            col.label(text=f"{warning['fix']} caused new problems:", icon="ERROR")
+            for line in warning["problems"][:5]:
+                col.label(text=f"• {line}")
+            row = box.row(align=True)
+            row.operator("ed.undo", text=warning.get("undo", "Undo Fix"), icon="LOOP_BACK")
+            row.operator("vexa.dismiss_warning", text="Keep")
+
         layout.template_list(
             "VEXA_UL_results", "", wm, "vexa_results", wm, "vexa_results_index",
             rows=min(max(len(results), 3), 10),
