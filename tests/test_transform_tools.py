@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import bpy  # noqa: E402
+from mathutils import Matrix  # noqa: E402
 
 from vexa.core import runner  # noqa: E402
 from vexa.core.scope import build_scope  # noqa: E402
@@ -143,6 +144,24 @@ def apply_transforms_leaves_objects_whose_look_would_change():
     assert smooth.scale.x == 1 and _world_verts(smooth) == before["SM_Smooth"]  # same shape, applied
     for name in ("SM_Bevel", "SM_Normals", "SM_Animated"):
         assert _world_verts(bpy.data.objects[name]) == before[name], name
+
+
+@test
+def pivot_fix_leaves_meshes_whose_look_would_change():
+    """Moving the origin of a mesh with a Mirror moves the mirror plane and opens the seam."""
+    fresh()
+    half = cube("SM_Half")
+    half.data.transform(Matrix.Translation((1, 0, 0)))  # the half that a Mirror at the origin completes
+    half.modifiers.new("Mirror", "MIRROR")
+    beveled = cube("SM_Beveled", loc=(5, 0, 0))
+    beveled.modifiers.new("Bevel", "BEVEL")
+    before = _world_verts(half)
+    _, r = run("detect_off_center_pivots")
+    reasons = {i.object_name: i.no_fix for i in r.issues}
+    assert "Mirror" in reasons["SM_Half"] and reasons["SM_Beveled"] == "", reasons
+    shape = _world_verts(beveled)
+    fix("detect_off_center_pivots")
+    assert _world_verts(half) == before and _world_verts(beveled) == shape
 
 
 @test

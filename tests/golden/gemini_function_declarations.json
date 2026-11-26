@@ -252,7 +252,7 @@
   },
   {
     "name": "move_pivots_to_bottom_center",
-    "description": "Moves each flagged mesh's origin to the bottom centre without moving the mesh.\n\nSkips meshes with children or shared mesh data.",
+    "description": "Moves each flagged mesh's origin to the bottom centre without moving the mesh.\n\nLeaves meshes whose look would change (modifiers that work from the origin,\nsuch as Mirror), meshes with children, and shared, linked, animated or skinned\nmeshes.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

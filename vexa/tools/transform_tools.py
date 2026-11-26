@@ -341,6 +341,32 @@ def detect_off_center_pivots(tolerance_m: float = 0.01) -> list:
     return issues
 
 
+# Modifiers whose result doesn't depend on where the origin is. Others do: Mirror
+# mirrors across the origin, Array, Screw, Simple Deform and Cast work from it.
+_ORIGIN_FREE_MODIFIERS = {"SUBSURF", "TRIANGULATE", "BEVEL", "SOLIDIFY", "WEIGHTED_NORMAL", "EDGE_SPLIT",
+                          "WELD", "DECIMATE"}
+
+
+def _pivot_skip_reason(issue) -> str:
+    obj = current().scene.objects.get(issue.object_name)
+    if obj is None:
+        return "not in the scene"
+    if obj.library or obj.data.library:
+        return "linked from another file"
+    if obj.children:
+        return "has children, which would move"
+    if obj.data.users > 1:
+        return "shares its mesh with other objects"
+    if _transform_animated(obj):
+        return "animated transforms"
+    if is_skeletal(obj):
+        return "skinned: move the rig's origin instead"
+    moving = [m.name for m in obj.modifiers if m.type not in _ORIGIN_FREE_MODIFIERS]
+    if moving:
+        return f"modifiers work from the origin ({', '.join(moving[:3])})"
+    return ""
+
+
 @AgentTools.register_fix(
     "detect_off_center_pivots", display_name="Move Pivots to Bottom Centre",
     confirm=(
@@ -348,30 +374,27 @@ def detect_off_center_pivots(tolerance_m: float = 0.01) -> list:
         "that stand on the floor. Wrong for doors and lids that turn on a hinge, and for "
         "modular pieces that snap at a corner."
     ),
+    skip_reason=_pivot_skip_reason,
 )
 def move_pivots_to_bottom_center(issues) -> str:
     """Moves each flagged mesh's origin to the bottom centre without moving the mesh.
 
-    Skips meshes with children or shared mesh data.
+    Leaves meshes whose look would change (modifiers that work from the origin,
+    such as Mirror), meshes with children, and shared, linked, animated or skinned
+    meshes.
     """
     scene = current().scene
-    moved, skipped = 0, []
+    moved = 0
     for issue in issues:
         obj = scene.objects.get(issue.object_name)
         if not obj:
-            continue
-        if obj.children or obj.data.users > 1:
-            skipped.append(obj.name)
             continue
         target = _bottom_center(obj)
         obj.data.transform(Matrix.Translation(-target))
         obj.matrix_world = obj.matrix_world @ Matrix.Translation(target)
         obj.data.update()
         moved += 1
-    msg = f"Moved pivot on {moved} objects"
-    if skipped:
-        msg += ". Skipped (has children or shared mesh): " + ", ".join(skipped)
-    return msg
+    return f"Moved pivot on {moved} objects"
 
 
 # ---------- units ----------
