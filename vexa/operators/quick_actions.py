@@ -5,7 +5,8 @@ import logging
 import bpy
 
 from ..core import dispatch
-from ..core.registry import AgentTools
+from ..core.registry import FIX, AgentTools
+from .check_ops import confirm_dialog, draw_confirm
 from .feedback import show_response
 
 logger = logging.getLogger(__name__)
@@ -16,9 +17,12 @@ RUNNING = {"tool": ""}
 
 
 def _execute_tool_async(tool_name: str):
-    """Timer callback: runs the tool after the button has redrawn as busy."""
+    """Timer callback: runs the tool after the button has redrawn as busy.
+
+    Fixes that need care were confirmed in the button's dialog before this runs.
+    """
     try:
-        message = dispatch.invoke(tool_name)
+        message = dispatch.invoke(tool_name, confirmed=True)
     except Exception as e:  # noqa: BLE001 - show any tool failure in the panel
         logger.error(f"Quick action error for {tool_name}: {e}")
         message = f"Error: {e}"
@@ -37,6 +41,17 @@ class VexaQuickAction(bpy.types.Operator):
         name="Tool Name",
         description="The name of the tool to execute",
     )
+
+    def invoke(self, context, event):
+        tool = AgentTools.get(self.tool_name)
+        if tool and tool.kind == FIX and not tool.fix.safe:
+            return confirm_dialog(self, context, tool)
+        return self.execute(context)
+
+    def draw(self, context):
+        tool = AgentTools.get(self.tool_name)
+        if tool and tool.kind == FIX:
+            draw_confirm(self.layout, tool, [o.name for o in context.selected_objects])
 
     def execute(self, context: bpy.types.Context) -> set[str]:
         if AgentTools.get(self.tool_name) is None:

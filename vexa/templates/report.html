@@ -167,11 +167,15 @@ footer a { color: var(--muted); }
   var problems = (R.results || []).filter(function (r) { return r.status !== "PASS"; })
     .sort(function (a, b) { return ORDER[a.status] - ORDER[b.status]; });
 
-  var fixable = problems.filter(function (r) { return r.fixable; }).length;
-  if (fixable) {
-    var fx = document.getElementById("fixable");
-    fx.textContent = (fixable === problems.length ? "All " : fixable + " of " + problems.length + " ") +
-      "can be fixed in one click in Vexa.";
+  var safe = problems.filter(function (r) { return r.fixable && r.fix_safe; }).length;
+  var review = problems.filter(function (r) { return r.fixable && !r.fix_safe; }).length;
+  if (safe || review) {
+    var fx = document.getElementById("fixable"), parts = [];
+    if (safe) parts.push((safe === problems.length ? "All " : safe + " of " + problems.length + " ") +
+      "can be fixed in one click in Vexa.");
+    if (review) parts.push(review + (safe ? " more have" : (review === 1 ? " has" : " have")) +
+      " a fix to review first.");
+    fx.textContent = parts.join(" ");
     fx.hidden = false;
   }
 

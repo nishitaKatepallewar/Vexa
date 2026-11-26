@@ -15,7 +15,7 @@ from ..core.presets import get_preset
 from ..core.registry import CHECK, AgentTools
 from ..core.results import overall_status, plural
 from ..core.runner import check_settings
-from ..operators.check_ops import STATE, disabled_checks
+from ..operators.check_ops import STATE, disabled_checks, fixes_to_review, safe_fixes
 from ..operators.quick_actions import RUNNING
 
 
@@ -152,14 +152,30 @@ class VEXA_PT_results(bpy.types.Panel):
         if _results_are_stale(context.scene):
             layout.label(text="Target or scope changed. Check again to update.", icon="FILE_REFRESH")
 
+        warning = STATE["warning"]
+        if warning:
+            box = layout.box()
+            col = box.column(align=True)
+            col.alert = True
+            col.label(text=f"{warning['fix']} caused new problems:", icon="ERROR")
+            for line in warning["problems"][:5]:
+                col.label(text=f"• {line}")
+            row = box.row(align=True)
+            row.operator("ed.undo", text=warning.get("undo", "Undo Fix"), icon="LOOP_BACK")
+            row.operator("vexa.dismiss_warning", text="Keep")
+
         layout.template_list(
             "VEXA_UL_results", "", wm, "vexa_results", wm, "vexa_results_index",
             rows=min(max(len(results), 3), 10),
         )
 
         row = layout.row(align=True)
-        row.operator("vexa.fix_all", text="Fix All Safe Issues", icon="TOOL_SETTINGS")
+        row.operator("vexa.fix_all", text=f"Fix All Safe ({len(safe_fixes())})", icon="TOOL_SETTINGS")
         row.operator("vexa.export_report", text="", icon="EXPORT")
+        review = len(fixes_to_review())
+        if review:
+            layout.label(text=f"{review} more {'fix needs' if review == 1 else 'fixes need'} a look first: "
+                              "use the wrench on the row", icon="INFO")
 
 
 class VEXA_PT_preset_checks(bpy.types.Panel):

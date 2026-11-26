@@ -69,7 +69,14 @@ def _sanitize(name: str, taken) -> str:
     return candidate
 
 
-@AgentTools.register_fix("detect_invalid_name_characters", display_name="Fix Invalid Names")
+@AgentTools.register_fix(
+    "detect_invalid_name_characters", display_name="Fix Invalid Names",
+    confirm=(
+        "Renames the flagged objects and materials, replacing spaces, dots and other "
+        "characters with underscores. A collision mesh that isn't part of this check keeps "
+        "its old name, so its link to the mesh can break."
+    ),
+)
 def fix_invalid_names(issues) -> str:
     """Replaces invalid characters in flagged object and material names with underscores."""
     scene = current().scene
@@ -106,7 +113,14 @@ def detect_missing_name_prefix(prefix: str = "SM_") -> list:
             for o in current().meshes if not o.name.startswith(prefix)]
 
 
-@AgentTools.register_fix("detect_missing_name_prefix", display_name="Add Name Prefix")
+@AgentTools.register_fix(
+    "detect_missing_name_prefix", display_name="Add Name Prefix",
+    confirm=(
+        "Adds the target's prefix (such as SM_) to each flagged mesh name and renames its "
+        "collision meshes to match. Skeletal meshes are renamed too, even if they should use "
+        "another prefix such as SK_."
+    ),
+)
 def add_name_prefix(issues, prefix: str = "SM_") -> str:
     """Adds the prefix to flagged meshes and renames their collision meshes to match."""
     scope = current()

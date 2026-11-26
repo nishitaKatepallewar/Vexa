@@ -154,7 +154,14 @@ def detect_color_space_issues() -> list:
     return issues
 
 
-@AgentTools.register_fix("detect_color_space_issues", display_name="Fix Color Spaces")
+@AgentTools.register_fix(
+    "detect_color_space_issues", display_name="Fix Color Spaces",
+    confirm=(
+        "Sets each flagged image to the colour space its role needs: Non-Color for normal, "
+        "roughness and metallic maps, sRGB for colour maps. The role comes from the socket "
+        "the image is plugged into."
+    ),
+)
 def fix_color_spaces(issues) -> str:
     """Sets each flagged image to the colour space its role needs."""
     fixed = 0
@@ -307,7 +314,13 @@ def _selected_alone(obj):
         view_layer.objects.active = was_active
 
 
-@AgentTools.register_fix("detect_unused_material_slots", display_name="Remove Unused Material Slots")
+@AgentTools.register_fix(
+    "detect_unused_material_slots", display_name="Remove Unused Material Slots",
+    confirm=(
+        "Removes material slots no face uses, with Blender's Remove Unused Slots. That also "
+        "removes slots only a modifier uses, such as a Solidify rim material."
+    ),
+)
 def remove_unused_material_slots(issues) -> str:
     """Removes slots no face uses. Empty slots that faces use need a material assigned by hand."""
     scene = current().scene
@@ -415,7 +428,13 @@ def detect_unused_materials() -> list:
                   value=f"{len(names)} materials", target="0")]
 
 
-@AgentTools.register_fix("detect_unused_materials", display_name="Remove Unused Materials")
+@AgentTools.register_fix(
+    "detect_unused_materials", display_name="Remove Unused Materials",
+    confirm=(
+        "Deletes every material in the file that nothing uses, including ones kept on purpose "
+        "with a fake user (the shield icon)."
+    ),
+)
 def remove_unused_materials(issues) -> str:
     """Deletes every material in the file that nothing uses, including ones with a fake user."""
     unused = _unused_materials()

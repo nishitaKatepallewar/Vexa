@@ -39,8 +39,18 @@ def check_runs_on_the_selection_and_summarizes():
 def fix_finds_its_check_issues_itself():
     fresh()
     bpy.ops.mesh.primitive_cylinder_add(vertices=8)
-    assert dispatch.invoke("triangulate_ngons") == "Triangulated 2 n-gons"
-    assert dispatch.invoke("triangulate_ngons").endswith("nothing to fix.")
+    assert dispatch.invoke("triangulate_ngons", confirmed=True) == "Triangulated 2 n-gons"
+    assert dispatch.invoke("triangulate_ngons", confirmed=True).endswith("nothing to fix.")
+
+
+@test
+def fix_that_needs_care_only_runs_once_confirmed():
+    fresh()
+    bpy.ops.mesh.primitive_cylinder_add(vertices=8)
+    faces = len(bpy.context.active_object.data.polygons)
+    text = dispatch.invoke("triangulate_ngons")
+    assert text.startswith("Triangulate N-gons needs your OK first.") and "before baking" in text, text
+    assert len(bpy.context.active_object.data.polygons) == faces
 
 
 @test

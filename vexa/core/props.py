@@ -23,6 +23,7 @@ class VexaResultItem(bpy.types.PropertyGroup):
     status: bpy.props.StringProperty()
     summary: bpy.props.StringProperty()
     fixable: bpy.props.BoolProperty()
+    fix_safe: bpy.props.BoolProperty()
     has_objects: bpy.props.BoolProperty()
 
 

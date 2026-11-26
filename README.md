@@ -33,7 +33,7 @@ No account or API key is needed. All checks and fixes run locally.
 2. Pick a **Target**: General clean-up, Unity Asset Store, Fab or Unreal project
 3. Choose what to check: Selected, Collection or Scene
 4. Click **Check Assets**
-5. For each problem: hover **?** to see why it matters, click the arrow to select the problem faces, or the wrench to apply a safe fix. **Fix All Safe Issues** does every safe fix at once.
+5. For each problem: hover **?** to see why it matters, click the arrow to select the problem faces, or the wrench to fix it. **Fix All Safe** runs only the fixes that do exactly what you'd do by hand; the others show what they'll change and wait for your OK.
 
 Individual tools and checks are also under **Tools** as one-click buttons.
 

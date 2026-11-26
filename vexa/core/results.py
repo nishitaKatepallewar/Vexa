@@ -27,6 +27,8 @@ class Issue:
     target:      what the preset expects, e.g. "1.0" or "20,000 tris".
     element:     "FACE", "EDGE" or "VERT" when specific mesh elements are affected.
     indices:     indices of those elements in object_name's mesh.
+    no_fix:      why the check's fix leaves this issue alone, e.g. "has modifiers".
+                 Set by the runner; empty when the fix can handle it.
     """
 
     object_name: Optional[str]
@@ -35,6 +37,7 @@ class Issue:
     target: str = ""
     element: Optional[str] = None
     indices: List[int] = field(default_factory=list)
+    no_fix: str = ""
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -45,7 +48,11 @@ class Issue:
 
 @dataclass
 class CheckResult:
-    """The outcome of one check in a preset run."""
+    """The outcome of one check in a preset run.
+
+    fixable:  the check has a fix and at least one issue the fix can handle.
+    fix_safe: that fix is safe, so Fix All runs it. Otherwise the artist confirms first.
+    """
 
     check_id: str
     title: str
@@ -53,6 +60,7 @@ class CheckResult:
     summary: str
     why: str = ""
     fixable: bool = False
+    fix_safe: bool = False
     issues: List[Issue] = field(default_factory=list)
 
     @property
@@ -71,6 +79,7 @@ class CheckResult:
             "summary": self.summary,
             "why": self.why,
             "fixable": self.fixable,
+            "fix_safe": self.fix_safe,
             "issues": [i.to_dict() for i in self.issues],
         }
 

@@ -46,7 +46,13 @@ def detect_extra_uv_maps(max_uv_maps: int = 1) -> list:
     return issues
 
 
-@AgentTools.register_fix("detect_extra_uv_maps", display_name="Remove Extra UV Maps")
+@AgentTools.register_fix(
+    "detect_extra_uv_maps", display_name="Remove Extra UV Maps",
+    confirm=(
+        "Removes every UV map after the allowed number. A material that reads one of those "
+        "maps by name (UV Map node) loses it."
+    ),
+)
 def remove_extra_uv_maps(issues, max_uv_maps: int = 1) -> str:
     """Removes every UV map after the first max_uv_maps on each flagged mesh.
 

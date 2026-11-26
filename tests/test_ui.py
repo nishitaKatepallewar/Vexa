@@ -147,12 +147,117 @@ def run() -> int:
         assert st["detect_unapplied_transforms"] == "PASS", st
 
     def fix_all():
+        import dataclasses
+        from vexa.operators.check_ops import VEXA_OT_fix_all, fixes_to_review, safe_fixes
         for o in scene.objects:
             o.select_set(True)
         bpy.ops.vexa.run_checks()
-        assert bpy.ops.vexa.fix_all() == {"FINISHED"}
-        left = [r.check_id for r in STATE["results"] if r.fixable]
-        assert not left, left
+        # Fixes that need a look first must never run from Fix All.
+        ran, originals = [], {}
+        for fix in AgentTools.all("fix"):
+            if not fix.fix.safe:
+                originals[fix.name] = fix
+                AgentTools._tools[fix.name] = dataclasses.replace(
+                    fix, func=lambda issues, _n=fix.name, **k: ran.append(_n) or "ran")
+        try:
+            label = [t for k, t in draw_panel(panel.VEXA_PT_results) if k == "label" and "a look first" in t]
+            assert bool(label) == bool(fixes_to_review()), label
+            if safe_fixes():
+                assert bpy.ops.vexa.fix_all() == {"FINISHED"}
+            else:
+                assert not VEXA_OT_fix_all.poll(bpy.context)
+            assert not safe_fixes() and not ran, (safe_fixes(), ran)
+        finally:
+            AgentTools._tools.update(originals)
+
+    def fixes_that_need_care_ask_first():
+        from vexa.core import dispatch
+        from vexa.operators.check_ops import VEXA_OT_fix_check, draw_confirm
+        from vexa.operators.execute_prompt import _dispatch_tool
+        fix = AgentTools.get("triangulate_ngons")
+        assert not fix.fix.safe
+        log = []
+        draw_confirm(FakeLayout(log), fix, ["Crate", "Cube", "A", "B", "C"])
+        text = " ".join(t for k, t in log if k == "label")
+        assert "before baking" in text and "Changes: Crate, Cube, A, B and 1 more" in text, text
+        props = type("Props", (), {"check_id": "detect_ngons"})()
+        assert "shows what it will change" in VEXA_OT_fix_check.description(bpy.context, props)
+        n = len(bpy.data.objects["Crate"].data.polygons)
+        assert dispatch.invoke("triangulate_ngons").startswith("Triangulate N-gons needs your OK first.")
+        _dispatch_tool("triangulate_ngons", {})  # the AI picking it doesn't run it either
+        assert wm.vexa_last_response.startswith("Triangulate N-gons needs your OK first."), wm.vexa_last_response
+        assert len(bpy.data.objects["Crate"].data.polygons) == n
+
+    def fix_uses_the_scene_as_it_is_now():
+        import bmesh
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.ops.mesh.primitive_cylinder_add(vertices=8, location=(0, 20, 0))
+        cyl = bpy.context.active_object
+        scene.vexa_scope = "SELECTED"
+        bpy.ops.vexa.run_checks()
+        # The artist deletes a face before fixing: every face number after it shifts.
+        bm = bmesh.new()
+        bm.from_mesh(cyl.data)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[bm.faces[0]], context="FACES_ONLY")
+        bm.to_mesh(cyl.data)
+        bm.free()
+        quads = sum(len(p.vertices) == 4 for p in cyl.data.polygons)
+        assert bpy.ops.vexa.fix_check(check_id="detect_ngons") == {"FINISHED"}
+        sizes = [len(p.vertices) for p in cyl.data.polygons]
+        assert max(sizes) <= 4 and sizes.count(4) == quads, sizes  # only the n-gons changed
+        bpy.data.objects.remove(cyl)
+        for o in scene.objects:
+            o.select_set(True)
+        bpy.ops.vexa.run_checks()
+
+    def fix_that_causes_a_problem_offers_undo():
+        import dataclasses
+        from vexa.operators import check_ops
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.ops.mesh.primitive_cube_add(location=(0, 30, 0))
+        box = bpy.context.active_object
+        box.name = "SM_Box"
+        box.scale = (2, 2, 2)
+        scene.vexa_scope = "SELECTED"
+        bpy.ops.vexa.run_checks()
+        real = AgentTools.get("apply_transforms")
+
+        def apply_and_break(issues, **kwargs):  # a broken fix: also adds an n-gon
+            msg = real.func(issues, **kwargs)
+            import bmesh
+            bm = bmesh.new()
+            bm.from_mesh(box.data)
+            bm.faces.ensure_lookup_table()
+            bmesh.ops.dissolve_faces(bm, faces=bm.faces[:2])
+            bm.to_mesh(box.data)
+            bm.free()
+            return msg
+
+        AgentTools._tools["apply_transforms"] = dataclasses.replace(real, func=apply_and_break)
+        try:
+            assert bpy.ops.vexa.fix_check(check_id="detect_unapplied_transforms") == {"FINISHED"}
+        finally:
+            AgentTools._tools["apply_transforms"] = real
+        warning = STATE["warning"]
+        assert warning and warning["fix"] == "Apply Transforms", warning
+        assert any(p.startswith("N-gons") for p in warning["problems"]), warning
+        log = draw_panel(panel.VEXA_PT_results)
+        assert ("operator", "ed.undo") in log and ("operator", "vexa.dismiss_warning") in log, log
+        assert any(k == "label" and "caused new problems" in t for k, t in log), log
+        # Undo shows results for the restored scene; Keep just hides the message.
+        assert check_ops._after_undo in bpy.app.handlers.undo_post
+        check_ops._after_undo()
+        assert STATE["warning"] is None
+        check_ops._rerun_from_timer()
+        STATE["warning"] = {"fix": "x", "problems": ["y"]}
+        assert bpy.ops.vexa.dismiss_warning() == {"FINISHED"} and STATE["warning"] is None
+        bpy.ops.vexa.run_checks()
+        assert ("operator", "ed.undo") not in draw_panel(panel.VEXA_PT_results)
+        bpy.data.objects.remove(box)
+        for o in scene.objects:
+            o.select_set(True)
+        bpy.ops.vexa.run_checks()
 
     def toggle_check():
         bpy.ops.vexa.toggle_check(check_id="detect_default_names")
@@ -266,17 +371,22 @@ def run() -> int:
         assert not panel.VEXA_PT_results.poll(bpy.context)  # no stale results after re-enabling
 
     def unregister_clean():
+        from vexa.operators import check_ops
         vexa.unregister()
         assert not hasattr(bpy.types.Scene, "vexa_preset")
+        assert check_ops._after_undo not in bpy.app.handlers.undo_post
 
-    for name, fn in [
+    steps = [
         ("presets listed in Target dropdown", presets_listed),
         ("panel draws before first run", panel_before_run),
         ("Check Assets runs Unity preset", run_checks),
         ("panels and result rows draw", panels_after_run),
         ("select problem faces", select_problem_faces),
         ("fix one check", fix_one),
-        ("fix all safe issues", fix_all),
+        ("Fix All runs only safe fixes", fix_all),
+        ("fixes that need care ask first", fixes_that_need_care_ask_first),
+        ("a fix uses the scene as it is now", fix_uses_the_scene_as_it_is_now),
+        ("a fix that causes a new problem offers Undo", fix_that_causes_a_problem_offers_undo),
         ("toggle a check off and on", toggle_check),
         ("export HTML and JSON reports", export_report),
         ("team presets folder", team_presets_folder),
@@ -289,10 +399,11 @@ def run() -> int:
         ("session state is not saved in the .blend", session_state_is_not_saved_in_the_blend),
         ("disable and re-enable keeps every tool", reenable_keeps_tools),
         ("unregister cleanly", unregister_clean),
-    ]:
+    ]
+    for name, fn in steps:
         step(name, fn)
 
-    print(f"\n{19 - len(failures)}/19 UI tests passed on Blender {bpy.app.version_string}")
+    print(f"\n{len(steps) - len(failures)}/{len(steps)} UI tests passed on Blender {bpy.app.version_string}")
     return len(failures)
 
 

@@ -34,7 +34,7 @@ class temporary_tools:
             return [Issue(o.name, f"flagged {label}", value=str(limit), element="FACE", indices=[0])
                     for o in current().meshes]
 
-        @AgentTools.register_fix("_t_flag_all", display_name="Fix all")
+        @AgentTools.register_fix("_t_flag_all", display_name="Fix all", safe=True)
         def _t_fix_all(issues, limit: int = 1) -> str:
             """Fixes everything."""
             return f"fixed {len(issues)} with limit {limit}"
@@ -107,10 +107,52 @@ def every_check_label_starts_with_detect():
 @test
 def fix_for_an_unknown_check_is_rejected():
     try:
-        AgentTools.register_fix("_t_no_such_check")(lambda issues: "")
+        AgentTools.register_fix("_t_no_such_check", safe=True)(lambda issues: "")
     except ValueError:
         return
     raise AssertionError("expected ValueError")
+
+
+@test
+def a_fix_is_either_safe_or_explains_what_it_changes():
+    for kwargs in ({}, {"confirm": "  "}, {"safe": True, "confirm": "Changes things."}):
+        try:
+            AgentTools.register_fix("detect_ngons", **kwargs)
+        except ValueError:
+            continue
+        raise AssertionError(f"expected ValueError for {kwargs}")
+    for fix in AgentTools.all("fix"):
+        if fix.name.startswith("_t_"):
+            continue
+        assert fix.fix.safe or len(fix.fix.confirm) > 40, (fix.name, fix.fix.confirm)
+
+
+@test
+def issues_a_fix_must_leave_are_never_passed_to_it():
+    from vexa.core import runner
+    from vexa.core.scope import build_scope
+    fresh()
+    cube("SM_A")
+    cube("SM_Keep", loc=(5, 0, 0))
+    seen = []
+    with temporary_tools():
+        @AgentTools.register_fix("_t_flag_all", display_name="Fix all", safe=True,
+                                 skip_reason=lambda issue: "kept" if issue.object_name == "SM_Keep" else "")
+        def _t_fix_all(issues) -> str:
+            seen.extend(i.object_name for i in issues)
+            return f"fixed {len(issues)}"
+
+        scope = build_scope(list(bpy.context.scene.objects))
+        result = runner.run_check("_t_flag_all", None, scope)
+        assert result.fixable and result.fix_safe
+        assert {i.object_name: i.no_fix for i in result.issues} == {"SM_A": "", "SM_Keep": "kept"}
+        message = runner.apply_fix(result, None, scope)
+        assert seen == ["SM_A"] and message == "fixed 1. Left for you: SM_Keep (kept)", (seen, message)
+
+        bpy.data.objects.remove(bpy.data.objects["SM_A"])
+        result = runner.run_check("_t_flag_all", None, build_scope(list(bpy.context.scene.objects)))
+        assert result.issues and not result.fixable  # nothing left the fix may touch
+        assert runner.apply_fix(result, None, scope) == "Nothing to fix"
 
 
 @test

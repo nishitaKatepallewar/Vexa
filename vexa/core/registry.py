@@ -9,7 +9,9 @@ There are three kinds:
 * checks (`AgentTools.register_check`): find problems and return a list of `Issue`s.
   Keyword arguments with defaults are their settings (thresholds); presets override
   them by name, and the tool spec exposes them to the LLM.
-* fixes (`AgentTools.register_fix`): safe one-click repairs for one check's issues.
+* fixes (`AgentTools.register_fix`): one-click repairs for one check's issues. A fix
+  is either safe (it does exactly what an artist would do, so Fix All may run it) or
+  needs care (the artist reads what it will change and confirms first).
 
 The registry only stores functions and their metadata, and imports nothing else from
 Vexa. It never runs anything: core/dispatch.py runs a tool by name, and core/runner.py
@@ -43,9 +45,21 @@ class CheckInfo:
 
 @dataclass(frozen=True)
 class FixInfo:
-    """What only fixes have: the name of the check whose issues this fix repairs."""
+    """What only fixes have.
+
+    check:       the name of the check whose issues this fix repairs.
+    safe:        True if the fix always does what the artist would have done by hand,
+                 so Fix All may run it. False if the artist must confirm first.
+    confirm:     for fixes that need care: what will change and when not to use it,
+                 shown before the fix runs.
+    skip_reason: optional function(issue) -> str. A non-empty string is why the fix
+                 leaves that issue alone (e.g. "has modifiers"); the fix never sees it.
+    """
 
     check: str
+    safe: bool = False
+    confirm: str = ""
+    skip_reason: Optional[Callable] = None
 
 
 @dataclass(frozen=True)
@@ -146,20 +160,36 @@ class AgentTools:
         display_name: str = "",
         category: str = "",
         is_quick_action: bool = False,
+        safe: bool = False,
+        confirm: str = "",
+        skip_reason: Optional[Callable] = None,
     ) -> Callable:
-        """Decorator to register a safe fix for an already registered check.
+        """Decorator to register a fix for an already registered check.
 
         The decorated function receives the check's issues as its first argument,
         plus any of the check's settings it names, and returns a summary string.
         A check has at most one fix.
+
+        Args:
+            safe: True only if the fix always does what the artist would have done
+                by hand. Safe fixes run from Fix All; the others never do.
+            confirm: required for fixes that aren't safe: what will change, and when
+                not to use it. Shown to the artist before the fix runs.
+            skip_reason: optional function(issue) -> str returning why the fix must
+                leave that issue alone, or "" if it can fix it.
         """
+        if safe and confirm:
+            raise ValueError("register_fix: a safe fix runs without asking, so it has no confirm text")
+        if not safe and not confirm.strip():
+            raise ValueError("register_fix: a fix that isn't safe needs confirm text")
 
         def decorator(func: Callable) -> Callable:
             check = cls.get(check_name, kind=CHECK)
             if check is None:
                 raise ValueError(f"register_fix: '{check_name}' is not a registered check")
             cls._add(func, FIX, display_name, category or check.category, is_quick_action,
-                     fix=FixInfo(check=check_name))
+                     fix=FixInfo(check=check_name, safe=safe, confirm=confirm.strip(),
+                                 skip_reason=skip_reason))
             return func
 
         return decorator

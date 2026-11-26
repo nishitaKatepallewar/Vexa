@@ -18,7 +18,8 @@ from .feedback import redraw_3d_views
 
 # The last run, kept in memory (not saved in the .blend). It holds names, never
 # references to Blender data (see the API docs, "Troubleshooting Errors & Crashes").
-STATE = {"preset_id": "", "scope": "", "results": []}
+# "warning" is set when a fix made another check worse: {"fix": name, "problems": [...]}.
+STATE = {"preset_id": "", "scope": "", "results": [], "warning": None}
 
 
 # ---------- helpers ----------
@@ -29,7 +30,10 @@ def scope_objects(context, scope: str) -> list:
         return list(context.view_layer.active_layer_collection.collection.all_objects)
     if scope == "SCENE":
         return list(context.scene.objects)
-    return list(context.selected_objects)
+    selected = getattr(context, "selected_objects", None)  # missing in timers
+    if selected is None:
+        selected = [o for o in context.view_layer.objects if o.select_get()]
+    return list(selected)
 
 
 def disabled_checks(scene) -> set:
@@ -59,17 +63,25 @@ def sync_ui(context) -> None:
         item.status = result.status
         item.summary = result.summary
         item.fixable = result.fixable
+        item.fix_safe = result.fix_safe
         item.has_objects = bool(result.objects)
     wm.vexa_has_run = bool(STATE["preset_id"])
     redraw_3d_views(context)
 
 
-def rerun(context) -> None:
+def check_now(context) -> list:
+    """Runs the last check's target and scope again on the scene as it is now."""
     preset = get_preset(STATE["preset_id"])
     if not preset:
-        return
+        return []
     objs = scope_objects(context, STATE["scope"])
-    STATE["results"] = runner.run_preset(preset, objs, context.scene, disabled_checks(context.scene))
+    return runner.run_preset(preset, objs, context.scene, disabled_checks(context.scene))
+
+
+def rerun(context) -> None:
+    if not get_preset(STATE["preset_id"]):
+        return
+    STATE["results"] = check_now(context)
     sync_ui(context)
 
 
@@ -79,15 +91,92 @@ def reload_presets(context=None) -> None:
     load_presets(extra)
 
 
-def fix_one(context, check_name: str) -> str:
-    result = find_result(check_name)
+def safe_fixes() -> list:
+    """Checks whose fix Fix All runs: something to fix, and the fix is safe."""
+    return [r.check_id for r in STATE["results"] if r.fixable and r.fix_safe]
+
+
+def fixes_to_review() -> list:
+    """Checks with a fix the artist must confirm on its own row first."""
+    return [r.check_id for r in STATE["results"] if r.fixable and not r.fix_safe]
+
+
+def confirm_dialog(operator, context, fix):
+    """Shows a dialog with the fix's confirm text; the fix runs if the artist clicks it."""
+    wm = context.window_manager
+    try:
+        return wm.invoke_props_dialog(operator, width=460, title=fix.display_name,
+                                      confirm_text=fix.display_name)
+    except TypeError:  # Blender 4.0 has no title or confirm_text
+        return wm.invoke_props_dialog(operator, width=460)
+
+
+def draw_confirm(layout, fix, objects=()) -> None:
+    """The dialog's text: what the fix changes, what it affects, how to undo it."""
+    col = layout.column(align=True)
+    for line in textwrap.wrap(fix.fix.confirm, 70):
+        col.label(text=line)
+    if objects:
+        col.separator()
+        names = ", ".join(objects[:4]) + (f" and {len(objects) - 4} more" if len(objects) > 4 else "")
+        col.label(text=f"Changes: {names}", icon="OBJECT_DATA")
+    col.separator()
+    col.label(text="Ctrl+Z undoes it.", icon="LOOP_BACK")
+
+
+def fix_one(context, check_name: str, before=None):
+    """Fixes one check's issues, checks again, and returns (message, results after).
+
+    The issues come from `before`, results for the scene as it is now. Without it the
+    check runs again first: the artist may have edited the scene since the last
+    check, and a fix must never act on stale results (e.g. old face numbers).
+    """
     preset = get_preset(STATE["preset_id"])
-    if not (result and preset and result.fixable):
-        return "Nothing to fix"
+    if not preset:
+        return "Nothing to fix", STATE["results"]
+    if before is None:
+        before = check_now(context)
+    result = next((r for r in before if r.check_id == check_name), None)
+    if not (result and result.fixable):
+        STATE["results"] = before
+        sync_ui(context)
+        return "Nothing to fix", before
     scope = build_scope(scope_objects(context, STATE["scope"]), context.scene)
     message = runner.apply_fix(result, preset.settings(check_name), scope)
-    rerun(context)
-    return message
+    STATE["results"] = check_now(context)
+    worse = runner.new_problems(before, STATE["results"])
+    if worse:
+        fix = AgentTools.fix_for(check_name)
+        STATE["warning"] = {"fix": fix.display_name, "problems": worse}
+        message += f". It also caused: {'; '.join(worse)}. Undo it with Ctrl+Z"
+    sync_ui(context)
+    return message, STATE["results"]
+
+
+@bpy.app.handlers.persistent
+def _after_undo(*_args) -> None:
+    """After undoing a fix that caused problems, show results for the restored scene."""
+    if STATE["warning"]:
+        STATE["warning"] = None
+        bpy.app.timers.register(_rerun_from_timer, first_interval=0.0)
+
+
+def _rerun_from_timer():
+    try:
+        rerun(bpy.context)
+    except Exception:  # noqa: BLE001 - results stay as they were; Check Assets refreshes them
+        pass
+    return None
+
+
+def register_handlers() -> None:
+    if _after_undo not in bpy.app.handlers.undo_post:
+        bpy.app.handlers.undo_post.append(_after_undo)
+
+
+def unregister_handlers() -> None:
+    if _after_undo in bpy.app.handlers.undo_post:
+        bpy.app.handlers.undo_post.remove(_after_undo)
 
 
 # ---------- operators ----------
@@ -115,7 +204,7 @@ class VEXA_OT_run_checks(bpy.types.Operator):
             self.report({"WARNING"}, where)
             return {"CANCELLED"}
         ensure_object_mode(context)
-        STATE.update(preset_id=preset.id, scope=scene.vexa_scope)
+        STATE.update(preset_id=preset.id, scope=scene.vexa_scope, warning=None)
         STATE["results"] = runner.run_preset(preset, objs, scene, disabled_checks(scene))
         sync_ui(context)
         errors = sum(1 for r in STATE["results"] if r.status == "ERROR")
@@ -146,7 +235,7 @@ class VEXA_OT_select_issues(bpy.types.Operator):
 
 
 class VEXA_OT_fix_check(bpy.types.Operator):
-    """Apply this check's safe fix, then check again"""
+    """Apply this check's fix, then check again"""
 
     bl_idname = "vexa.fix_check"
     bl_label = "Fix"
@@ -157,29 +246,69 @@ class VEXA_OT_fix_check(bpy.types.Operator):
     @classmethod
     def description(cls, context, properties):
         fix = AgentTools.fix_for(properties.check_id)
-        return f"{fix.display_name}, then check again" if fix else cls.__doc__
+        if not fix:
+            return cls.__doc__
+        if fix.fix.safe:
+            return f"{fix.display_name}, then check again"
+        return f"{fix.display_name}: shows what it will change before it runs"
+
+    def invoke(self, context, event):
+        fix = AgentTools.fix_for(self.check_id)
+        if fix and not fix.fix.safe:
+            return confirm_dialog(self, context, fix)
+        return self.execute(context)
+
+    def draw(self, context):
+        fix = AgentTools.fix_for(self.check_id)
+        result = find_result(self.check_id)
+        if fix:
+            draw_confirm(self.layout, fix, [i.object_name for i in result.issues if i.object_name and not i.no_fix]
+                         if result else [])
 
     def execute(self, context):
         ensure_object_mode(context)
-        self.report({"INFO"}, fix_one(context, self.check_id))
+        self.report({"INFO"}, fix_one(context, self.check_id)[0])
         return {"FINISHED"}
 
 
 class VEXA_OT_fix_all(bpy.types.Operator):
-    """Apply every available safe fix in order, checking again after each"""
+    """Apply every safe fix in order, checking again after each. Fixes that need a look first are left for their own row"""
 
     bl_idname = "vexa.fix_all"
-    bl_label = "Fix All Safe Issues"
+    bl_label = "Fix All Safe"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        return any(r.fixable for r in STATE["results"])
+        return bool(safe_fixes())
 
     def execute(self, context):
         ensure_object_mode(context)
-        messages = [fix_one(context, name) for name in [r.check_id for r in STATE["results"] if r.fixable]]
-        self.report({"INFO"}, "; ".join(m for m in messages if m != "Nothing to fix") or "Nothing to fix")
+        results, messages = check_now(context), []
+        for name in [r.check_id for r in results if r.fixable and r.fix_safe]:
+            message, results = fix_one(context, name, results)
+            messages.append(message)
+            if STATE["warning"]:  # stop here: one Ctrl+Z undoes this whole Fix All
+                STATE["warning"]["undo"] = "Undo Fix All"
+                messages.append("Stopped there")
+                break
+        text = "; ".join(m for m in messages if m != "Nothing to fix") or "Nothing to fix"
+        review = fixes_to_review()
+        if review:
+            text += f". {len(review)} more to review on their own rows"
+        self.report({"INFO"}, text)
+        return {"FINISHED"}
+
+
+class VEXA_OT_dismiss_warning(bpy.types.Operator):
+    """Keep the fix and hide this message"""
+
+    bl_idname = "vexa.dismiss_warning"
+    bl_label = "Keep"
+
+    def execute(self, context):
+        STATE["warning"] = None
+        redraw_3d_views(context)
         return {"FINISHED"}
 
 
@@ -291,6 +420,7 @@ CLASSES = (
     VEXA_OT_select_issues,
     VEXA_OT_fix_check,
     VEXA_OT_fix_all,
+    VEXA_OT_dismiss_warning,
     VEXA_OT_explain_check,
     VEXA_OT_toggle_check,
     VEXA_OT_export_report,
