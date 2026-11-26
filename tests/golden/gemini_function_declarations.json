@@ -338,13 +338,17 @@
   },
   {
     "name": "detect_missing_lightmap_uvs",
-    "description": "Finds meshes without a lightmap UV channel, or whose lightmap UVs leave 0\u20131.\n\nchannel: index of the lightmap UV map (Unreal uses 1, the second map).",
+    "description": "Finds meshes without a lightmap UV channel, or whose lightmap UVs leave 0\u20131 or\noverlap.\n\nchannel: index of the lightmap UV map (Unreal uses 1, the second map).\nresolution: texels a side used to test for overlaps. Every face needs its own\nspace in a lightmap; faces that share texels at this size are flagged.",
     "parameters": {
       "type": "OBJECT",
       "properties": {
         "channel": {
           "type": "INTEGER",
           "description": "Parameter channel"
+        },
+        "resolution": {
+          "type": "INTEGER",
+          "description": "Parameter resolution"
         }
       },
       "required": []

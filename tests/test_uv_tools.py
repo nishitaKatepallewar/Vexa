@@ -77,6 +77,32 @@ def extra_uv_maps_a_material_reads_are_kept():
 
 
 
+def _set_uvs(obj, layer, per_face):
+    for poly in obj.data.polygons:
+        for corner, loop in enumerate(poly.loop_indices):
+            layer.data[loop].uv = per_face[poly.index][corner]
+
+
+@test
+def overlapping_lightmap_uvs_are_found():
+    """Audit: a lightmap with every face stacked on one square passed."""
+    fresh()
+    two = mesh_from("SM_Two", [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (2, 0, 0), (3, 0, 0), (3, 1, 0),
+                               (2, 1, 0)], [(0, 1, 2, 3), (4, 5, 6, 7)])
+    two.data.uv_layers.new(name="UVMap")
+    lightmap = two.data.uv_layers.new(name="Lightmap")
+    a = [(0.1, 0.1), (0.4, 0.1), (0.4, 0.4), (0.1, 0.4)]
+    _set_uvs(two, lightmap, [a, [(0.4, 0.1), (0.7, 0.1), (0.7, 0.4), (0.4, 0.4)]])  # side by side
+    assert run("detect_missing_lightmap_uvs")[1].status == "PASS"
+    _set_uvs(two, lightmap, [a, [(0.25, 0.1), (0.55, 0.1), (0.55, 0.4), (0.25, 0.4)]])  # half on top
+    _, r = run("detect_missing_lightmap_uvs")
+    issue = r.issues[0]
+    assert issue.message == "Lightmap UVs (UV1) overlap on 2 faces" and issue.indices == [0, 1], issue
+    assert issue.value == "33.2% of texels", issue.value  # 0.15 of the 0.45 they cover
+    _set_uvs(two, lightmap, [a, a])
+    assert run("detect_missing_lightmap_uvs")[1].issues[0].value == "100.0% of texels"
+
+
 @test
 def uvs_outside_0_1():
     fresh()
