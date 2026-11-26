@@ -2,12 +2,14 @@
 
 import math
 
+import bmesh
 import bpy
+import numpy as np
 from mathutils import Matrix, Vector
 
 from ..core.registry import AgentTools
 from ..core.results import Issue
-from ..core.scope import collision_base, current
+from ..core.scope import collision_base, current, is_skeletal
 
 TOL = 1e-4
 NOT_AT_ORIGIN = "Not at world origin"
@@ -216,10 +218,87 @@ def apply_transforms(issues, check_rotation: bool = True, check_location: bool =
 def detect_negative_scale() -> list:
     """Finds meshes mirrored with a negative scale.
 
-    To fix by hand: apply scale, then Mesh > Normals > Recalculate Outside.
+    By hand: apply scale, then Mesh > Normals > Recalculate Outside.
     """
     return [Issue(obj.name, "Negative scale", value=f"scale {_fmt_vec(obj.scale)}", target="all positive")
             for obj in current().all_meshes if any(s < 0 for s in obj.scale)]
+
+
+def _world_face_normals(obj) -> np.ndarray:
+    """Each face's normal from its winding in world space (Newell's method)."""
+    mesh = obj.data
+    co = np.zeros(len(mesh.vertices) * 3)
+    mesh.vertices.foreach_get("co", co)
+    matrix = np.array(obj.matrix_world)
+    co = co.reshape(-1, 3) @ matrix[:3, :3].T + matrix[:3, 3]
+    loop_verts = np.zeros(len(mesh.loops), dtype=np.int64)
+    mesh.loops.foreach_get("vertex_index", loop_verts)
+    starts = np.zeros(len(mesh.polygons), dtype=np.int64)
+    totals = np.zeros(len(mesh.polygons), dtype=np.int64)
+    mesh.polygons.foreach_get("loop_start", starts)
+    mesh.polygons.foreach_get("loop_total", totals)
+    face = np.repeat(np.arange(len(starts)), totals)
+    nxt = np.arange(len(loop_verts)) + 1
+    wrap = nxt == (starts + totals)[face]
+    nxt[wrap] = starts[face[wrap]]
+    cross = np.cross(co[loop_verts], co[loop_verts[nxt]])
+    return np.column_stack([np.bincount(face, weights=cross[:, k], minlength=len(starts)) for k in range(3)])
+
+
+def _negative_skip_reason(issue) -> str:
+    obj = current().scene.objects.get(issue.object_name)
+    if obj is None:
+        return "not in the scene"
+    if obj.library or obj.data.library:
+        return "linked from another file"
+    if obj.data.users > 1:
+        return "shares its mesh with other objects"
+    if _transform_animated(obj):
+        return "animated transforms"
+    if is_skeletal(obj):
+        return "skinned: mirror the rig and mesh together"
+    changing = [m.name for m in obj.modifiers if (m.show_viewport or m.show_render)
+                and m.type not in _ALWAYS_SAFE_MODIFIERS]
+    if changing:
+        return f"modifiers would change shape ({', '.join(changing[:3])}): apply them first"
+    if obj.data.has_custom_normals:
+        return "custom normals would break when the mirror is applied"
+    return ""
+
+
+@AgentTools.register_fix(
+    "detect_negative_scale", display_name="Apply Mirror and Fix Normals",
+    confirm=(
+        "Applies the negative scale into the mesh, so the object's scale becomes positive "
+        "and the mesh looks the same, with its faces pointing outward (Apply Scale, then "
+        "Recalculate Outside). The UVs don't change, so the texture stays mirrored as it is "
+        "now: text reads backwards, and Flipped UVs may flag those faces afterwards."
+    ),
+    skip_reason=_negative_skip_reason,
+)
+def apply_negative_scale(issues) -> str:
+    """Applies negative scale into the mesh and keeps every face pointing the way it
+    did, whichever Blender version does the apply (4.x leaves faces inside out)."""
+    scene = current().scene
+    fixed = 0
+    for issue in issues:
+        obj = scene.objects.get(issue.object_name)
+        if not obj or not any(s < 0 for s in obj.scale):
+            continue
+        before = _world_face_normals(obj)
+        with bpy.context.temp_override(selected_editable_objects=[obj], selected_objects=[obj],
+                                       active_object=obj, object=obj):
+            bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        after = _world_face_normals(obj)
+        if np.einsum("ij,ij->", before, after) > 0:  # winding unchanged: faces now point in
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+            bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
+            bm.to_mesh(obj.data)
+            bm.free()
+            obj.data.update()
+        fixed += 1
+    return f"Applied the mirror on {fixed} objects"
 
 
 # ---------- pivot ----------

@@ -43,12 +43,35 @@ def location_checked_only_when_asked():
 
 
 @test
-def negative_scale_not_auto_fixed():
+def negative_scale_is_applied_with_faces_kept_outward():
+    """4.2 and 4.5 leave every face inside out after applying a negative scale; 5.2
+    doesn't. The fix must end with faces outward on all of them."""
+    fresh()
+    c = cube(loc=(3, 0, 0))
+    c.scale = (-1, 2, 1)
+    before = _world_verts(c)
+    _, r = run("detect_negative_scale")
+    assert r.status == "ERROR" and r.fixable and not r.fix_safe
+    msg, r = fix("detect_negative_scale")
+    assert r.status == "PASS" and msg == "Applied the mirror on 1 objects", (msg, r.issues)
+    assert tuple(c.scale) == (1, 1, 1) and _world_verts(c) == before
+    assert all(p.normal.dot(p.center) > 0 for p in c.data.polygons)  # outward, as it looked
+    assert run("detect_flipped_normals")[1].status == "PASS"
+
+    normals = cube("SM_Normals", loc=(6, 0, 0))
+    normals.scale = (-1, 1, 1)
+    if hasattr(normals.data, "use_auto_smooth"):  # Blender 4.0
+        normals.data.use_auto_smooth = True
+    normals.data.normals_split_custom_set([(0.6, 0, 0.8)] * len(normals.data.loops))
+    _, r = run("detect_negative_scale")
+    assert not r.fixable and "custom normals" in r.issues[0].no_fix, r.issues
+
+
+@test
+def apply_transforms_leaves_negative_scale_to_its_own_fix():
     fresh()
     c = cube()
     c.scale = (-1, 1, 1)
-    _, r = run("detect_negative_scale")
-    assert r.status == "ERROR" and not r.fixable
     _, t = run("detect_unapplied_transforms")
     assert not t.fixable and "negative" in t.issues[0].no_fix, t.issues
     assert runner.apply_fix(t, {}, build_scope([c])) == "Nothing to fix"

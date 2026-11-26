@@ -220,7 +220,16 @@
   },
   {
     "name": "detect_negative_scale",
-    "description": "Finds meshes mirrored with a negative scale.\n\nTo fix by hand: apply scale, then Mesh > Normals > Recalculate Outside.",
+    "description": "Finds meshes mirrored with a negative scale.\n\nBy hand: apply scale, then Mesh > Normals > Recalculate Outside.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "apply_negative_scale",
+    "description": "Applies negative scale into the mesh and keeps every face pointing the way it\ndid, whichever Blender version does the apply (4.x leaves faces inside out).",
     "parameters": {
       "type": "OBJECT",
       "properties": {},
