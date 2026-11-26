@@ -193,7 +193,7 @@
   },
   {
     "name": "detect_unapplied_transforms",
-    "description": "Finds meshes whose scale isn't 1, or whose rotation isn't 0.\n\ncheck_rotation: also require rotation to be applied, not just scale.\ncheck_location: also require the mesh to sit at the world origin (location 0, 0, 0).",
+    "description": "Finds meshes whose scale isn't 1, or whose rotation isn't 0.\n\ncheck_rotation: also require rotation to be applied, not just scale.\ncheck_location: also require the asset to sit at the world origin (location 0, 0, 0).\nOnly top-level objects are checked for this: a part parented to another object,\nlike a wheel on a cart, is placed by its parent.",
     "parameters": {
       "type": "OBJECT",
       "properties": {

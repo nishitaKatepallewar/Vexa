@@ -26,7 +26,7 @@ def _unapplied(obj, check_rotation: bool, check_location: bool) -> list:
     if check_rotation and rot.angle > TOL:
         degrees = [math.degrees(a) for a in rot.to_euler()]
         problems.append(("rotation", f"rotation {_fmt_vec(degrees)}°"))
-    if check_location and loc.length > TOL:
+    if check_location and obj.parent is None and loc.length > TOL:  # parts sit where their parent puts them
         problems.append(("location", f"location {_fmt_vec(loc)}"))
     return problems
 
@@ -70,7 +70,9 @@ def detect_unapplied_transforms(check_rotation: bool = True, check_location: boo
     """Finds meshes whose scale isn't 1, or whose rotation isn't 0.
 
     check_rotation: also require rotation to be applied, not just scale.
-    check_location: also require the mesh to sit at the world origin (location 0, 0, 0).
+    check_location: also require the asset to sit at the world origin (location 0, 0, 0).
+    Only top-level objects are checked for this: a part parented to another object,
+    like a wheel on a cart, is placed by its parent.
     """
     issues = []
     for obj in current().all_meshes:

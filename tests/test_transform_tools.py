@@ -71,6 +71,8 @@ def apply_transforms_moves_an_assembly_as_one_piece():
     wheel.matrix_parent_inverse = body.matrix_world.inverted()
     cube("UCX_SM_Cart_01", loc=(5, 2, 0)).scale = (2, 1, 1)
     gap = (wheel.matrix_world.translation - body.matrix_world.translation).length
+    _, r = run("detect_unapplied_transforms", check_location=True)
+    assert "SM_Wheel" not in [i.object_name for i in r.issues], r.issues  # placed by its parent
     msg, r = fix("detect_unapplied_transforms", check_location=True)
     bpy.context.view_layer.update()
     assert body.location.length < 1e-6 and abs(body.dimensions.x - 4) < 1e-5, (msg, body.location)
