@@ -102,5 +102,22 @@ def skeletal_meshes_get_the_skeletal_prefix():
     assert r.status == "PASS"
 
 
+
+@test
+def default_names_from_other_apps_and_materials():
+    """Audit: Material.001 and Maya or import names like pCube1 passed."""
+    fresh()
+    for i, name in enumerate(["pCube1", "polySurface12", "Box001", "geometry_0", "Object_12",
+                              "SM_Crate", "Cube_Lid", "Box", "pCubeLid"]):
+        obj = cube(name, loc=(i * 3, 0, 0))
+    obj.data.materials.append(bpy.data.materials.new("Material.001"))
+    obj.data.materials.append(bpy.data.materials.new("lambert2"))
+    obj.data.materials.append(bpy.data.materials.new("M_Lid"))
+    _, r = run("detect_default_names")
+    flagged = [i.value for i in r.issues]
+    assert flagged == ["pCube1", "polySurface12", "Box001", "geometry_0", "Object_12",
+                       "Material.001", "lambert2"], flagged
+
+
 if __name__ == "__main__":
     main(globals())

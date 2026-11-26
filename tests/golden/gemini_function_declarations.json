@@ -473,7 +473,7 @@
   },
   {
     "name": "detect_default_names",
-    "description": "Finds meshes still using Blender's default names (Cube.001, Plane, \u2026).",
+    "description": "Finds meshes and materials still using default names: Cube.001, pCube1, Box001,\ngeometry_0, Material.001, lambert1\u2026",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

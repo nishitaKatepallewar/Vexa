@@ -8,8 +8,19 @@ from ..core.registry import AgentTools
 from ..core.results import Issue
 from ..core.scope import collision_base, current, is_collision_name, is_skeletal
 
+# Names nobody chose: Blender's primitives, Maya's (pCube1, polySurface12), 3ds Max's
+# (Box001) and what importers make up (geometry_0, Object_12).
 DEFAULT_NAME = re.compile(
     r"^(Cube|Sphere|Icosphere|Cylinder|Plane|Cone|Torus|Circle|Grid|Monkey|Suzanne|Mesh|Object)(\.\d+)?$"
+    r"|^(p(Cube|Sphere|Cylinder|Cone|Plane|Torus|Pipe|Prism|Pyramid|Helix|Disc|Platonic|SolidBox)"
+    r"|polySurface|polyMesh)\d+$"
+    r"|^(Box|Sphere|GeoSphere|Cylinder|Cone|Plane|Torus|Teapot|Tube|Pyramid|ChamferBox)\d{3}$"
+    r"|^(geometry|mesh|Mesh|object|Object|node|Node)_?\d+(\.\d+)?$"
+)
+# Materials nobody named: Blender's, Maya's and 3ds Max's defaults.
+DEFAULT_MATERIAL_NAME = re.compile(
+    r"^(Material(\.\d+)?|(lambert|blinn|phong|phongE|standardSurface|aiStandardSurface)\d+"
+    r"|Material #\d+|\d+ - Default|DefaultMaterial|default)$"
 )
 
 
@@ -18,14 +29,24 @@ DEFAULT_NAME = re.compile(
 @AgentTools.register_check(
     display_name="Detect Default Names",
     category="Naming",
-    why="Names like Cube.003 become asset names in engine. Reviewers and teammates "
-        "can't tell what anything is.",
+    why="Names like Cube.003 or Material.001 become asset and material names in engine. "
+        "Reviewers and teammates can't tell what anything is.",
     pass_text="None",
 )
 def detect_default_names() -> list:
-    """Finds meshes still using Blender's default names (Cube.001, Plane, …)."""
-    return [Issue(o.name, "Default name", value=o.name, target="descriptive name")
-            for o in current().meshes if DEFAULT_NAME.match(o.name)]
+    """Finds meshes and materials still using default names: Cube.001, pCube1, Box001,
+    geometry_0, Material.001, lambert1…"""
+    issues, seen = [], set()
+    for obj in current().meshes:
+        if DEFAULT_NAME.match(obj.name):
+            issues.append(Issue(obj.name, "Default name", value=obj.name, target="descriptive name"))
+        for slot in obj.material_slots:
+            mat = slot.material
+            if mat and mat.name not in seen and DEFAULT_MATERIAL_NAME.match(mat.name):
+                seen.add(mat.name)
+                issues.append(Issue(obj.name, f"Material '{mat.name}' has a default name", value=mat.name,
+                                    target="descriptive name"))
+    return issues
 
 
 # ---------- allowed characters ----------
