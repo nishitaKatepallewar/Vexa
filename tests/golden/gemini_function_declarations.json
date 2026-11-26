@@ -496,7 +496,7 @@
   },
   {
     "name": "fix_invalid_names",
-    "description": "Replaces invalid characters in flagged object and material names with underscores.",
+    "description": "Replaces invalid characters in flagged object and material names with underscores.\n\nCollision meshes are renamed with their mesh (UCX_<new name>_NN), even if they\naren't part of the check, so the link between them never breaks.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

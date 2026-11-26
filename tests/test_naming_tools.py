@@ -8,6 +8,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import bpy  # noqa: E402
+from vexa.core import runner  # noqa: E402
+from vexa.core.scope import build_scope  # noqa: E402
 from helpers import cube, fix, fresh, run, main, test  # noqa: E402
 
 
@@ -35,6 +37,35 @@ def rename_avoids_name_clash():
     _, r = fix("detect_invalid_name_characters")
     assert r.status == "PASS", [i.message for i in r.issues]
     assert bpy.data.objects.get("Crate_A_1"), [o.name for o in bpy.data.objects]
+
+
+@test
+def renaming_a_mesh_renames_its_collision_too():
+    """Audit: with only the mesh selected, its UCX_ kept the old name and the link broke."""
+    fresh()
+    crate = cube("SM Crate")
+    cube("UCX_SM Crate_01", size=2.1)
+    cube("UCX_SM Crate_01.001", size=2.1)  # a duplicate, as Blender names it
+    _, r = run("detect_invalid_name_characters", objs=[crate])
+    assert r.fixable and r.fix_safe
+    runner.apply_fix(r, {}, build_scope([crate]))
+    names = sorted(o.name for o in bpy.data.objects)
+    assert names == ["SM_Crate", "UCX_SM_Crate_01", "UCX_SM_Crate_02"], names
+    _, r = run("detect_invalid_collision_meshes")
+    assert r.status == "PASS", r.issues
+    _, r = run("detect_missing_collision", objs=[crate])
+    assert r.status == "PASS", r.issues
+
+
+@test
+def collision_is_left_if_its_mesh_is_not_checked():
+    fresh()
+    cube("SM Crate")
+    col = cube("UCX_SM Crate_01", size=2.1)
+    _, r = run("detect_invalid_name_characters", objs=[col])
+    assert not r.fixable and "SM Crate isn't being checked" in r.issues[0].no_fix, r.issues
+    _, r = run("detect_invalid_name_characters", objs=[cube("UCX_SM_Box_01.001", loc=(5, 0, 0))])
+    assert r.fixable  # its mesh doesn't exist, so the name alone is fixed
 
 
 @test
