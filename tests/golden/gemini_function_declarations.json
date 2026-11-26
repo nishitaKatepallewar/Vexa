@@ -352,7 +352,7 @@
   },
   {
     "name": "detect_missing_textures",
-    "description": "Finds Image Texture nodes with no image assigned, or whose file is missing.",
+    "description": "Finds Image Texture nodes with no image, a missing file, or an image that was\nmade or changed in Blender and not saved (e.g. a bake). Looks inside node groups.",
     "parameters": {
       "type": "OBJECT",
       "properties": {},

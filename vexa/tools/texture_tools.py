@@ -8,6 +8,7 @@ import bpy
 import numpy as np
 
 from ..core.meshes import exported_mesh
+from ..core.nodes import material_nodes
 from ..core.registry import AgentTools
 from ..core.results import Issue
 from ..core.scope import current
@@ -20,23 +21,28 @@ def _materials(obj):
 
 
 def _image_nodes(mat):
-    tree = getattr(mat, "node_tree", None)
-    if not tree:
-        return
-    for node in tree.nodes:
+    """Every Image Texture node the material uses, including inside node groups."""
+    for node in material_nodes(mat):
         if node.type == "TEX_IMAGE":
             yield node
 
 
-def _image_missing(image) -> bool:
+def _missing_reason(image) -> str:
+    """Why the engine won't get this image, or "" if it will."""
     if image is None:
-        return True
-    if image.packed_file or image.source not in {"FILE", "SEQUENCE", "TILED"}:
-        return False
+        return "no image"
+    if image.source == "GENERATED" and not image.packed_file:
+        return "made in Blender and never saved"
+    if image.source not in {"FILE", "SEQUENCE", "TILED"}:
+        return ""
+    if image.is_dirty:
+        return "has unsaved changes"
+    if image.packed_file:
+        return ""
     # Pass the library so paths inside linked .blend files resolve correctly
     # (see the API docs, "File Paths & String Encoding").
     path = bpy.path.abspath(image.filepath, library=image.library)
-    return not (path and os.path.exists(path))
+    return "" if path and os.path.exists(path) else "file not found"
 
 
 # ---------- missing textures ----------
@@ -44,22 +50,26 @@ def _image_missing(image) -> bool:
 @AgentTools.register_check(
     display_name="Detect Missing Textures",
     category="Texture",
-    why="Image nodes with no image, or pointing at a file that no longer exists, "
-        "export as blank or pink materials.",
+    why="Image nodes with no image, pointing at a file that no longer exists, or "
+        "holding a bake that was never saved, export as blank or pink materials.",
     severity="ERROR",
     pass_text="All found",
     is_quick_action=True,
 )
 def detect_missing_textures() -> list:
-    """Finds Image Texture nodes with no image assigned, or whose file is missing."""
+    """Finds Image Texture nodes with no image, a missing file, or an image that was
+    made or changed in Blender and not saved (e.g. a bake). Looks inside node groups."""
     issues = []
     for obj in current().meshes:
         missing = []
         for mat in _materials(obj):
             for node in _image_nodes(mat):
-                if _image_missing(node.image):
-                    label = node.image.name if node.image else "no image"
-                    missing.append(f"{mat.name}: {label}")
+                reason = _missing_reason(node.image)
+                if reason == "no image":
+                    missing.append(f"{mat.name}: no image")
+                elif reason:
+                    missing.append(f"{mat.name}: {node.image.name}"
+                                   + ("" if reason == "file not found" else f" ({reason})"))
         if missing:
             more = "…" if len(missing) > 3 else ""
             issues.append(Issue(obj.name, "Missing: " + ", ".join(missing[:3]) + more,
