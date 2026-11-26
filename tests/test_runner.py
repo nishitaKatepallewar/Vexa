@@ -122,7 +122,8 @@ def new_problems_lists_checks_that_got_worse():
     def res(check, status, faces=0, others=0):
         issues = [Issue("A", "x", element="FACE", indices=list(range(faces)))] if faces else []
         issues += [Issue("A", "y") for _ in range(others)]
-        return CheckResult(check, check.title(), status, f"{faces + others} issues", issues=issues)
+        return CheckResult(check, check.title(), status, f"{faces + others} issues", issues=issues,
+                           size=faces + others)
 
     before = [res("ngons", "WARNING", faces=4), res("normals", "PASS"), res("names", "WARNING", others=1),
               res("budget", "WARNING", others=1)]
@@ -130,6 +131,26 @@ def new_problems_lists_checks_that_got_worse():
              res("budget", "ERROR", others=1), res("new_check", "ERROR", others=3)]
     assert runner.new_problems(before, after) == ["Normals (2 issues)", "Names (2 issues)", "Budget (1 issues)"]
     assert runner.new_problems(before, before) == []
+
+
+@test
+def problem_size_counts_faces_by_area():
+    """Triangulating two flagged quads into four triangles isn't a bigger problem."""
+    import bmesh
+    fresh()
+    c = cube()
+    scope = build_scope([c])
+    quads = runner.problem_size([Issue(c.name, "x", element="FACE", indices=[0, 1])], scope)
+    bm = bmesh.new()
+    bm.from_mesh(c.data)
+    bm.faces.ensure_lookup_table()
+    tris = bmesh.ops.triangulate(bm, faces=[bm.faces[0], bm.faces[1]])["faces"]
+    indices = [f.index for f in tris]
+    bm.to_mesh(c.data)
+    bm.free()
+    assert abs(runner.problem_size([Issue(c.name, "x", element="FACE", indices=indices)], scope) - quads) < 1e-6
+    assert runner.problem_size([Issue(c.name, "x", element="EDGE", indices=[1, 2, 3]), Issue(None, "y")],
+                               scope) == 4
 
 
 if __name__ == "__main__":

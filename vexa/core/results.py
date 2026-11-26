@@ -62,6 +62,7 @@ class CheckResult:
     fixable: bool = False
     fix_safe: bool = False
     issues: List[Issue] = field(default_factory=list)
+    size: float = 0.0  # how much is wrong; see runner.problem_size
 
     @property
     def objects(self) -> List[str]:
